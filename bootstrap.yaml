@@ -1,0 +1,29 @@
+# Apply ONCE on the MANAGEMENT cluster's OpenShift GitOps:
+#   oc apply -f bootstrap.yaml
+# Installs AppProject + AVP + Vault + the single Account Root Application.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: management-bootstrap
+  namespace: openshift-gitops
+spec:
+  project: default
+  sources:
+    - repoURL: CHANGE_ME_PLATFORM_GITOPS_REPO_URL
+      targetRevision: main
+      path: charts/management-bootstrap
+      helm:
+        valueFiles:
+          - $values/values-management.yaml
+    - repoURL: CHANGE_ME_PLATFORM_GITOPS_REPO_URL
+      targetRevision: main
+      ref: values
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: openshift-gitops
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false

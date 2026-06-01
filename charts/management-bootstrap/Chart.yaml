@@ -1,0 +1,5 @@
+apiVersion: v2
+name: management-bootstrap
+description: One-time management-cluster bootstrap for IBM MAS GitOps (Vault + AVP + single Account Root)
+type: application
+version: 0.1.0

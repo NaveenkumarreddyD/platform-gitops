@@ -1,0 +1,22 @@
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: mas
+  namespace: {{ .Values.argoNamespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "0"
+spec:
+  description: IBM MAS GitOps (single account root - see Known Limitations)
+  sourceRepos:
+    - {{ .Values.source.repo_url | quote }}
+    - {{ .Values.generator.repo_url | quote }}
+    - https://helm.releases.hashicorp.com
+  destinations:
+    - server: '*'          # in-cluster (root apps) AND every registered Target Cluster
+      namespace: '*'
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'

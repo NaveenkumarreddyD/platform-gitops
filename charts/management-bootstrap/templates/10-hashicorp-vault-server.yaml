@@ -1,0 +1,79 @@
+{{- if .Values.vault.enabled }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hashicorp-vault-server
+  namespace: {{ .Values.argoNamespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "10"
+spec:
+  project: mas
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: {{ .Values.vault.chartVersion | quote }}
+    helm:
+      releaseName: vault
+      values: |
+        global:
+          openshift: true
+          enabled: true
+        injector:
+          enabled: false
+        server:
+          enabled: true
+          image:
+            repository: {{ .Values.vault.imageRepository }}
+            tag: {{ .Values.vault.imageTag | quote }}
+          route:
+            enabled: true
+            host: {{ .Values.vault.host }}
+            tls:
+              termination: edge
+          dataStorage:
+            enabled: true
+            size: {{ .Values.vault.dataSize }}
+            storageClass: {{ .Values.vault.storageClass }}
+            accessMode: ReadWriteOnce
+          auditStorage:
+            enabled: true
+            size: {{ .Values.vault.auditSize }}
+            storageClass: {{ .Values.vault.storageClass }}
+            accessMode: ReadWriteOnce
+          ha:
+            enabled: true
+            replicas: {{ .Values.vault.replicas }}
+            raft:
+              enabled: true
+              setNodeId: true
+              config: |
+                ui = true
+                listener "tcp" {
+                  address = "[::]:8200"
+                  cluster_address = "[::]:8201"
+                  tls_disable = 1
+                }
+                storage "raft" {
+                  path = "/vault/data"
+                }
+                service_registration "kubernetes" {}
+          readinessProbe:
+            enabled: true
+            path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204"
+          livenessProbe:
+            enabled: true
+            path: "/v1/sys/health?standbyok=true"
+            initialDelaySeconds: 60
+        ui:
+          enabled: true
+          serviceType: ClusterIP
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: vault
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+{{- end }}

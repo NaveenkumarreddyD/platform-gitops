@@ -1,0 +1,44 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ibm-mas-account-root
+  namespace: {{ .Values.argoNamespace }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+spec:
+  project: mas
+  destination:
+    namespace: {{ .Values.argoNamespace }}
+    server: https://kubernetes.default.svc
+  source:
+    repoURL: {{ .Values.source.repo_url | quote }}
+    targetRevision: {{ .Values.source.revision | quote }}
+    path: root-applications/ibm-mas-account-root
+    helm:
+      values: |
+        avp:
+          name: argocd-vault-plugin-helm
+          secret: argocd-vault-plugin-credentials
+          values_varname: HELM_VALUES
+        account:
+          id: {{ .Values.account.id }}
+        source:
+          repo_url: {{ .Values.source.repo_url }}
+          revision: {{ .Values.source.revision }}
+        generator:
+          repo_url: {{ .Values.generator.repo_url }}
+          revision: {{ .Values.generator.revision }}
+        argo:
+          namespace: {{ .Values.argoNamespace }}
+          projects:
+            rootapps: mas
+            apps: mas
+        cluster_admin_role: {{ .Values.accountRoot.clusterAdminRole }}
+        application_admin_role: {{ .Values.accountRoot.applicationAdminRole }}
+        auto_delete: false
+{{- if .Values.accountRoot.autoSync }}
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: true
+{{- end }}

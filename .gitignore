@@ -1,0 +1,8 @@
+# Do not commit real credentials or generated kubeconfigs
+*-secret.yaml
+*.real.yaml
+.env.local
+*.pem
+*.key
+*.crt
+kubeconfig*

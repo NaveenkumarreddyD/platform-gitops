@@ -1,0 +1,14 @@
+# Override the CHANGE_ME defaults from charts/management-bootstrap/values.yaml here.
+account:
+  id: mas
+source:
+  repo_url: CHANGE_ME_IBM_MAS_GITOPS_SOURCE_REPO_URL
+  revision: "8.0.0"
+generator:
+  repo_url: CHANGE_ME_MAS_GITOPS_CONFIG_REPO_URL
+  revision: main
+vault:
+  enabled: true
+  host: CHANGE_ME_VAULT_HOST
+avp:
+  role: mas-gitops

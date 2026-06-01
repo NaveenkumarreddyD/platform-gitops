@@ -1,0 +1,73 @@
+# Patch the OpenShift GitOps ArgoCD CR so the repo-server runs the AVP CMP sidecar.
+# Apply on the MANAGEMENT cluster, then the operator restarts the repo-server.
+#   oc patch argocd openshift-gitops -n openshift-gitops --type merge \
+#     --patch-file platform-repo/argocd/argocd-cr-avp-sidecar-patch.yaml
+# NOTE: apiVersion/field names can vary by GitOps operator version - confirm against your CR
+#       (oc get argocd openshift-gitops -n openshift-gitops -o yaml). AVP/Helm versions are examples.
+#       The init container needs egress to github.com and get.helm.sh (or pre-bake a custom image).
+apiVersion: argoproj.io/v1beta1
+kind: ArgoCD
+metadata:
+  name: openshift-gitops
+  namespace: openshift-gitops
+spec:
+  repo:
+    volumes:
+      - name: cmp-plugin
+        configMap:
+          name: cmp-plugin
+      - name: custom-tools
+        emptyDir: {}
+      - name: cmp-tmp
+        emptyDir: {}
+    initContainers:
+      - name: download-tools
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        env:
+          - name: AVP_VERSION
+            value: "1.18.1"
+          - name: HELM_VERSION
+            value: "3.15.4"
+        command: [sh, -c]
+        args:
+          - |
+            set -e
+            microdnf install -y tar gzip
+            curl -fsSL -o /custom-tools/argocd-vault-plugin \
+              https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v${AVP_VERSION}/argocd-vault-plugin_${AVP_VERSION}_linux_amd64
+            curl -fsSL https://get.helm.sh/helm-v${HELM_VERSION}-linux-amd64.tar.gz | tar -xz -C /tmp
+            cp /tmp/linux-amd64/helm /custom-tools/helm
+            chmod +x /custom-tools/argocd-vault-plugin /custom-tools/helm
+        volumeMounts:
+          - name: custom-tools
+            mountPath: /custom-tools
+    sidecarContainers:
+      - name: avp-helm
+        image: registry.access.redhat.com/ubi9/ubi-minimal:latest
+        command: [/var/run/argocd/argocd-cmp-server]
+        env:
+          - name: HELM_CACHE_HOME
+            value: /tmp/helm/cache
+          - name: HELM_CONFIG_HOME
+            value: /tmp/helm/config
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: var-files          # provided by the operator's repo-server
+            mountPath: /var/run/argocd
+          - name: plugins            # provided by the operator's repo-server
+            mountPath: /home/argocd/cmp-server/plugins
+          - name: cmp-tmp
+            mountPath: /tmp
+          - name: cmp-plugin
+            mountPath: /home/argocd/cmp-server/config/plugin.yaml
+            subPath: avp-helm.yaml
+          - name: custom-tools
+            mountPath: /usr/local/bin/argocd-vault-plugin
+            subPath: argocd-vault-plugin
+          - name: custom-tools
+            mountPath: /usr/local/bin/helm
+            subPath: helm
