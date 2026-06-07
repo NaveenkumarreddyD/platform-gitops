@@ -1,16 +1,13 @@
-# default operator set (override per cluster in <cluster>-values.yaml)
+# OLM operators. MongoDB is NOT here — IBM installs the MongoDB Community Operator via its own
+# deployment (mongodb-kubernetes-operator), so it's deployed as a Helm app (see gitops generator),
+# not OLM. This chart installs the community grafana-operator used by the ibm.mas_devops grafana role.
 operatorsNamespace: platform-operators
-clusterScoped: true            # OperatorGroup watches all namespaces when true
+clusterScoped: true
 operators:
-  - name: mongodb-community
-    package: mongodb-enterprise # set to the package as it appears in YOUR catalog source
-    channel: stable
-    source: certified-operators # CatalogSource name
-    sourceNamespace: openshift-marketplace
-    startingCSV: ""             # optional pin, e.g. mongodb-operator.v0.9.0
   - name: grafana-operator
     package: grafana-operator
-    channel: v5
+    channel: v5                       # ibm grafana role: community grafana-operator v5
     source: community-operators
     sourceNamespace: openshift-marketplace
-    startingCSV: 
+    startingCSV: grafana-operator.v5.21.2   # PIN: v5.22.x CRD breaks on OCP < 4.19 (you are 4.18.30)
+    installPlanApproval: Manual             # Manual holds it at 5.21.2 (Automatic would jump to broken 5.22)

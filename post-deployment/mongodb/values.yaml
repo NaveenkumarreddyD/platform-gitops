@@ -1,14 +1,17 @@
 # DEDICATED Mongo for this instance (NOT the shared mas-mongo-ce). Defaults overridden by the
-# platform-gitops 26-mongodb-ce app via HELM_VALUES.
+# gitops mongodb-ce app via HELM_VALUES. Aligned to ibm.mas_devops mongodb role (community).
 namespace: mongo-drgitops
 resource: drgitopsapp-mongo
-members: 3
-mongodbVersion: "6.0.12"        # set to a supported MongoCE version
+members: 3                       # ibm default mongodb_replicas=3 (3 data + 3 logs PVCs)
+mongodbVersion: "6.0.12"         # mongod for MAS 8.11 / catalog v9-240625
 storageClass: isilon
-dataSize: 20Gi
-logsSize: 5Gi
+dataSize: 20Gi                   # ibm default mongodb_storage_capacity_data
+logsSize: 20Gi                   # ibm default mongodb_storage_capacity_logs
+# ibm defaults: req 500m/1Gi, lim 1/1Gi
+resources:
+  requests: { cpu: "500m", memory: "1Gi" }
+  limits:   { cpu: "1",    memory: "1Gi" }
 adminUser: admin
 slsmongoUser: slsmongo
-# passwords are GENERATE-once in Vault by load-secrets.sh, read here via AVP:
 adminPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/mongo#password>"
 slsmongoPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/sls-mongo#password>"

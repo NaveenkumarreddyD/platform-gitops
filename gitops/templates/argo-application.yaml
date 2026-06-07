@@ -55,24 +55,29 @@ spec:
     automated: { prune: false, selfHeal: true }
     syncOptions: [ "CreateNamespace=true" ]
 {{- end }}
-{{- if .Values.enable.operators }}
+{{- if .Values.enable.mongodb }}
 ---
+# MongoDB Community Operator the IBM way: the operator's own Helm chart (creates the
+# mongodb-kubernetes-operator deployment), NOT OLM. Watches the dedicated mongo namespace.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: mongodb-ce-operator
+  name: mongodb-community-operator-{{ .Values.instanceId }}
   namespace: {{ $ns }}
   annotations: { argocd.argoproj.io/sync-wave: "20" }
   finalizers: [ resources-finalizer.argocd.argoproj.io ]
 spec:
   project: {{ .Values.project }}
-  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.mongodbOperator.namespace }} }
+  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.mongoNs" . }} }
   source:
-    repoURL: {{ $repo | quote }}
-    targetRevision: {{ $rev | quote }}
-    path: post-deployment/operators
+    repoURL: {{ .Values.mongoOperator.repo }}
+    chart: {{ .Values.mongoOperator.chart }}
+    targetRevision: {{ .Values.mongoOperator.version | quote }}
     helm:
-      valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
+      releaseName: mongodb-community-operator
+      values: |
+        community-operator-crds: { enabled: true }
+        operator: { watchNamespace: {{ include "gitops.mongoNs" . }} }
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]
@@ -240,6 +245,29 @@ spec:
         mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
   syncPolicy:
     automated: { prune: true, selfHeal: true }
+{{- end }}
+{{- if .Values.enable.grafana }}
+---
+# community grafana-operator (OLM) pinned to v5.21.2 (v5.22.x CRD breaks on OCP < 4.19)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-operator
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "55" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.operatorsNamespace }} }
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: post-deployment/operators
+    helm:
+      valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]
 {{- end }}
 {{- if .Values.enable.grafana }}
 ---

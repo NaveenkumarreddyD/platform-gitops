@@ -9,7 +9,7 @@ spec:
   channel: {{ .channel }}
   source: {{ .source }}
   sourceNamespace: {{ .sourceNamespace }}
-  installPlanApproval: Automatic
+  installPlanApproval: {{ .installPlanApproval | default "Automatic" }}
 {{- if .startingCSV }}
   startingCSV: {{ .startingCSV }}
 {{- end }}

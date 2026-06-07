@@ -26,7 +26,8 @@ vault:
 avp: { role: mas-gitops }
 accountRoot: { autoSync: false, clusterAdminRole: true, applicationAdminRole: true }
 grafana: { namespace: grafana }
-mongodbOperator: { enabled: true, namespace: platform-operators }
+operatorsNamespace: platform-operators
+mongoOperator: { repo: https://mongodb.github.io/helm-charts, chart: community-operator, version: "0.9.0" }   # MongoDB Community Operator (supports mongod 6.0.12)
 
 # which Applications to emit
 enable:
