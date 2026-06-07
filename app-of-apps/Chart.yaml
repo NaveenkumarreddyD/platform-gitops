@@ -1,6 +1,0 @@
-apiVersion: v2
-name: app-of-apps
-description: Root app-of-apps. Creates the AppProject, GitLab repo Secret, and the single
-  "gitops" Application for one environment. Apply ONCE per cluster with that env's values.
-type: application
-version: 1.0.0

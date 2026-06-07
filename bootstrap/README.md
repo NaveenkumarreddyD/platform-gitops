@@ -1,13 +1,9 @@
-# bootstrap — run ONCE per cluster
+# bootstrap — day-0 seed (run ONCE per cluster)
 
-Prereqs in `00-prereqs/` (apply first): GitLab CA trust, repo credentials, Argo CD cluster RBAC.
+ArgoCD can't create its own first resources, so this is the only imperative step.
+`apply.sh <env>` applies `00-prereqs/` (GitLab CA trust, Argo RBAC, repo credentials, the
+`mas` AppProject) then renders `gitops/` for that env and applies it. That render includes a
+**self-managing root Application** (`platform-<env>`) — from then on ArgoCD owns everything:
+edit `gitops/<env>-*.yaml`, commit, and it re-renders all Applications (and itself).
 
-Then render the root `app-of-apps` for THIS cluster's env and apply it. That creates the
-AppProject `mas` and the single `gitops-<env>` Application, which fans out everything else.
-
-    # example: prod cluster (roc4)
-    helm template mas-aoa ../app-of-apps \
-      -f ../app-of-apps/common-values.yaml \
-      -f ../app-of-apps/roc4-values.yaml | oc apply -f -
-
-Envs: `nroc4` (non-prod) · `roc4` (prod) · `drroc4` (DR). One values file = one cluster.
+    ./bootstrap/apply.sh roc4      # prod cluster

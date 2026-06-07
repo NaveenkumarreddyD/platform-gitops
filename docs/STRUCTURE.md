@@ -1,44 +1,36 @@
-# platform-gitops — structure (start here)
+# platform-gitops — structure
 
-Convention: the `gitlab-argocd-starter` pattern — Helm chart per area, `<env>-values.yaml`
-per environment, classic **app-of-apps**. Environments are clusters: `nroc4` (non-prod),
-`roc4` (prod), `drroc4` (DR).
+Three tiers, one job each:
 
 ```
-app-of-apps/      ROOT chart. Apply ONCE per cluster. Makes AppProject + repo Secret +
-                  the gitops-<env> Application. Per-env files: <env>-values.yaml.
-gitops/           GENERATOR. Renders every Argo Application for one env (hub singletons +
-                  per-instance workloads). Values layered: common -> <env>-common -> <env>.
-post-deployment/  Workload charts the gitops Apps point at:
-  operators/        OLM install (namespace/operator-group/subscription) — Mongo operator
-  mongodb/          dedicated MongoDBCommunity CR + secrets + cert-manager CA
-  jdbc/             external (non-SSL) Oracle JdbcCfg
-  vault-sync/       registration-sync Jobs (mongo gate + SLS/DRO -> Vault)
-  grafana/          Grafana (operator v5) + Thanos datasource + MAS dashboards
-bootstrap/        00-prereqs/ + apply.sh (per-cluster bootstrap)
-scripts/          load-secrets.sh, setup-vault-auth.sh wrapper, deploy-instance.sh ...
-vault-auth/       Vault policies + setup-vault-auth.sh
+bootstrap/    DAY-0 seed (imperative, once per cluster). 00-prereqs/ = GitLab CA, Argo RBAC,
+              repo creds, the `mas` AppProject. apply.sh seeds the gitops root, then ArgoCD owns it.
+gitops/       THE GENERATOR (self-healing). Emits the self-managing root Application + all
+              workload Applications, sync-wave ordered. Edit <env>-*.yaml here to change what
+              deploys; ArgoCD reconciles. Values layered: common -> <env>-common -> <env>.
+workloads/    The actual Helm charts the Applications point at:
+  operators/    grafana-operator (OLM, pinned v5.21.2 for OCP < 4.19)
+  mongodb/      MongoDBCommunity CR (3x, 6.0.12, 20Gi+20Gi, TLS+SCRAM)  [operator via Helm chart]
+  jdbc/         external Oracle JdbcCfg
+  vault-sync/   registration-sync Jobs (mongo gate + SLS/DRO -> Vault)
+  grafana/      Grafana CR + Thanos datasource + dashboards
+argocd/       AVP repo-server sidecar patch (manual one-time)
+scripts/, vault-auth/, docs/
 ```
 
-## Flow (app-of-apps)
+## Flow
 ```
 bootstrap/apply.sh <env>
-   -> app-of-apps  creates AppProject "mas" + Application gitops-<env>
-gitops-<env>
-   -> gitops/ renders Applications, sync-wave ordered:
-      -10 AVP | 10 Vault | 20 Mongo operator | 25 Mongo CR | 28 mongo->Vault (gate)
-      30 account-root (Core/Manage) | 40 JDBC | 50 SLS/DRO sync
-account-root -> discovers all MAS instances from mas-config-repo
+  -> 00-prereqs (AppProject + creds + CA + RBAC)
+  -> helm template gitops | oc apply   (seeds the root Application "platform-<env>")
+platform-<env>  (now ArgoCD-managed, self-heals)
+  -> renders gitops/ -> emits all workload Applications, sync-wave ordered:
+     -20 root | -10 AVP | 10 Vault | 20 Mongo operator(Helm) | 25 Mongo CR | 28 mongo->Vault gate
+     30 account-root (Core/Manage) | 40 JDBC | 50 SLS/DRO sync | 55 grafana-operator | 60 Grafana
 ```
 
-## Add a new cluster/env
+## Add a cluster/env
 1. `gitops/`: add `<env>-common-values.yaml` (clusterId, vault.host) + `<env>-values.yaml` (instanceId, mongo ns, ...).
-2. `app-of-apps/`: add `<env>-values.yaml` (just `envName: <env>`).
-3. `post-deployment/operators/`: add `<env>-values.yaml` (usually empty).
-4. `mas-config-repo`: add `envs/<cluster>.env` + `render.py <cluster>`.
-5. `bootstrap/apply.sh <env>` on that cluster. No template edits.
-
-## Per-env values live in ONE place
-The instance specifics (clusterId, instanceId, Mongo ns/version, JDBC SSL, DRO ns) are set in
-`gitops/<env>-*` and passed inline to the workload charts by the generator — so you don't
-duplicate them across post-deployment charts.
+2. `workloads/operators` + `workloads/grafana`: add `<env>-values.yaml` (usually just overrides).
+3. `mas-config-repo`: add `envs/<cluster>.env` + `render.py <cluster>`.
+4. `./bootstrap/apply.sh <env>` on that cluster. No template edits.

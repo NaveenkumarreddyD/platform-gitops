@@ -41,8 +41,6 @@ enable:
   grafana: true
 
 # duplicates owned by app-of-apps — keep off here
-createProject: false
-repoSecret: { create: false, username: "", password: "" }
 
 # ---- per-env placeholders (set in <env>-* files) ----
 clusterId: ""

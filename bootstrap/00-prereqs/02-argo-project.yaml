@@ -1,8 +1,8 @@
 apiVersion: argoproj.io/v1alpha1
 kind: AppProject
 metadata:
-  name: {{ .Values.project }}
-  namespace: {{ .Values.argoNamespace }}
+  name: mas
+  namespace: openshift-gitops
 spec:
   description: MAS GitOps applications
   sourceRepos: [ "*" ]

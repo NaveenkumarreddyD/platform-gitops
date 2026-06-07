@@ -7,7 +7,33 @@
 {{- $rev  := .Values.platform.revision -}}
 {{- $ns   := .Values.argoNamespace -}}
 
+{{- /* self-managing root: ArgoCD owns the generator, so editing gitops/<env>-*.yaml + commit
+       re-renders every Application below (and this root). Seeded once by bootstrap/apply.sh. */ -}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-{{ .Values.clusterId }}
+  namespace: {{ $ns }}
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+  annotations: { argocd.argoproj.io/sync-wave: "-20" }
+spec:
+  project: {{ .Values.project }}
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: gitops
+    helm:
+      valueFiles:
+        - common-values.yaml
+        - {{ .Values.clusterId }}-common-values.yaml
+        - {{ .Values.clusterId }}-values.yaml
+  destination: { server: https://kubernetes.default.svc, namespace: {{ $ns }} }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+
 {{- if .Values.enable.vault }}
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -97,7 +123,7 @@ spec:
   source:
     repoURL: {{ $repo | quote }}
     targetRevision: {{ $rev | quote }}
-    path: post-deployment/mongodb
+    path: workloads/mongodb
     plugin:
       name: argocd-vault-plugin-helm
       env:
@@ -130,7 +156,7 @@ spec:
   source:
     repoURL: {{ $repo | quote }}
     targetRevision: {{ $rev | quote }}
-    path: post-deployment/vault-sync
+    path: workloads/vault-sync
     helm:
       values: |
         accountId: {{ .Values.account.id }}
@@ -196,7 +222,7 @@ spec:
   source:
     repoURL: {{ $repo | quote }}
     targetRevision: {{ $rev | quote }}
-    path: post-deployment/jdbc
+    path: workloads/jdbc
     plugin:
       name: argocd-vault-plugin-helm
       env:
@@ -227,7 +253,7 @@ spec:
   source:
     repoURL: {{ $repo | quote }}
     targetRevision: {{ $rev | quote }}
-    path: post-deployment/vault-sync
+    path: workloads/vault-sync
     helm:
       values: |
         accountId: {{ .Values.account.id }}
@@ -262,7 +288,7 @@ spec:
   source:
     repoURL: {{ $repo | quote }}
     targetRevision: {{ $rev | quote }}
-    path: post-deployment/operators
+    path: workloads/operators
     helm:
       valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
   syncPolicy:
@@ -284,7 +310,7 @@ spec:
   source:
     repoURL: {{ $repo | quote }}
     targetRevision: {{ $rev | quote }}
-    path: post-deployment/grafana
+    path: workloads/grafana
     helm:
       valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
   syncPolicy:
