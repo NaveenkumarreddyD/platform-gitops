@@ -1,0 +1,10 @@
+instance_id: drgitopsapp
+mas_config_name: drgitopsapp-jdbc-system
+workspace_id: drgitopswks
+# ---- SSL toggle ----
+jdbc_ssl_enabled: false        # false = TCP/1521 (Ansible parity). true = TCPS/2484.
+# url: non-SSL EZConnect now; for TCPS use a full descriptor (PROTOCOL=TCPS)(PORT=2484) — see README.
+jdbc_url: "<path:secret/data/mas/drroc4/drgitopsapp/jdbc-system#jdbc_url>"
+jdbc_username: "<path:secret/data/mas/drroc4/drgitopsapp/jdbc-system#username>"
+jdbc_password: "<path:secret/data/mas/drroc4/drgitopsapp/jdbc-system#password>"
+jdbc_ca_crt: "<path:secret/data/mas/drroc4/drgitopsapp/jdbc-system#ca.crt>"   # used only when ssl enabled

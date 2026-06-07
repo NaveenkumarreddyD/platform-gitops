@@ -1,0 +1,61 @@
+# Production preferred pattern: use an internal image that already contains helm and argocd-vault-plugin.
+spec:
+  repo:
+    volumes:
+      - name: cmp-plugin
+        configMap:
+          name: cmp-plugin
+      - name: cmp-tmp
+        emptyDir: {}
+      - name: avp-k8s-token
+        projected:
+          defaultMode: 420
+          sources:
+            - serviceAccountToken:
+                path: token
+                expirationSeconds: 3600
+            - configMap:
+                name: kube-root-ca.crt
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+            - downwardAPI:
+                items:
+                  - path: namespace
+                    fieldRef:
+                      fieldPath: metadata.namespace
+    sidecarContainers:
+      - name: avp-helm
+        image: registry.lac1.biz/gitops/avp-helm:1.18.0-helm3.14.4
+        imagePullPolicy: IfNotPresent
+        command:
+          - /var/run/argocd/argocd-cmp-server
+        env:
+          - name: HELM_CACHE_HOME
+            value: /tmp/helm/cache
+          - name: HELM_CONFIG_HOME
+            value: /tmp/helm/config
+          - name: HELM_DATA_HOME
+            value: /tmp/helm/data
+          - name: AVP_CONFIG_TYPE
+            value: env
+          - name: ARGOCD_EXEC_TIMEOUT
+            value: "180"
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        volumeMounts:
+          - name: var-files
+            mountPath: /var/run/argocd
+          - name: plugins
+            mountPath: /home/argocd/cmp-server/plugins
+          - name: cmp-tmp
+            mountPath: /tmp
+          - name: cmp-plugin
+            mountPath: /home/argocd/cmp-server/config/plugin.yaml
+            subPath: avp-helm.yaml
+          - name: avp-k8s-token
+            mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+            readOnly: true

@@ -1,0 +1,47 @@
+# Dedicated replica set. admin = MAS; slsmongo = SLS. TLS via the cert-manager CA (00-ca.yaml).
+apiVersion: mongodbcommunity.mongodb.com/v1
+kind: MongoDBCommunity
+metadata:
+  name: "{{ .Values.resource }}"
+  namespace: "{{ .Values.namespace }}"
+spec:
+  members: {{ .Values.members }}
+  type: ReplicaSet
+  version: "{{ .Values.mongodbVersion }}"
+  security:
+    authentication:
+      modes: ["SCRAM"]
+    tls:
+      enabled: true
+      certificateKeySecretRef: { name: "{{ .Values.resource }}-server-cert" }
+      caCertificateSecretRef: { name: "{{ .Values.resource }}-ca" }
+  users:
+    - name: "{{ .Values.adminUser }}"
+      db: admin
+      passwordSecretRef: { name: "{{ .Values.resource }}-admin-password" }
+      scramCredentialsSecretName: "{{ .Values.resource }}-admin-scram"
+      roles:
+        - { name: clusterAdmin,          db: admin }
+        - { name: userAdminAnyDatabase,  db: admin }
+        - { name: readWriteAnyDatabase,  db: admin }
+        - { name: dbAdminAnyDatabase,    db: admin }
+    - name: "{{ .Values.slsmongoUser }}"
+      db: admin
+      passwordSecretRef: { name: "{{ .Values.resource }}-slsmongo-password" }
+      scramCredentialsSecretName: "{{ .Values.resource }}-slsmongo-scram"
+      roles:
+        - { name: readWriteAnyDatabase,  db: admin }
+        - { name: dbAdminAnyDatabase,    db: admin }
+  statefulSet:
+    spec:
+      volumeClaimTemplates:
+        - metadata: { name: data-volume }
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: "{{ .Values.storageClass }}"
+            resources: { requests: { storage: "{{ .Values.dataSize }}" } }
+        - metadata: { name: logs-volume }
+          spec:
+            accessModes: ["ReadWriteOnce"]
+            storageClassName: "{{ .Values.storageClass }}"
+            resources: { requests: { storage: "{{ .Values.logsSize }}" } }

@@ -1,0 +1,12 @@
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: {{ include "operators.ns" . }}-og
+  namespace: {{ include "operators.ns" . }}
+spec:
+{{- if .Values.clusterScoped }}
+  {}   # empty selector = all namespaces (cluster-scoped operator)
+{{- else }}
+  targetNamespaces:
+    - {{ include "operators.ns" . }}
+{{- end }}

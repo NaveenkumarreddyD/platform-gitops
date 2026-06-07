@@ -1,0 +1,106 @@
+{{- $slsNs := .Values.slsSync.namespace | default (printf "mas-%s-sls" .Values.instanceId) }}
+{{- if .Values.deployShared }}
+# Shared infra (created ONCE — e.g. by the hub). Instance stacks set deployShared=false
+# and reuse this SA/ClusterRole/ConfigMap, adding only their Jobs + per-namespace RoleBindings.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: {{ .Values.serviceAccount }}
+  namespace: {{ .Values.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ .Values.serviceAccount }}-reader
+rules:
+  - apiGroups: ["sls.ibm.com"]
+    resources: ["licenseservices"]
+    verbs: ["get","list"]
+  - apiGroups: [""]
+    resources: ["secrets","configmaps"]
+    verbs: ["get","list"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    verbs: ["get","list"]
+  - apiGroups: ["mongodbcommunity.mongodb.com"]
+    resources: ["mongodbcommunity"]
+    verbs: ["get","list"]
+{{- end }}
+{{- if .Values.slsSync.enabled }}
+---
+# scope secret/cm/route read to ONLY the SLS namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.serviceAccount }}-sls
+  namespace: {{ $slsNs }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.serviceAccount }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount }}
+    namespace: {{ .Values.namespace }}
+{{- end }}
+{{- if .Values.droSync.enabled }}
+---
+# scope read to ONLY the DRO namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.serviceAccount }}-dro
+  namespace: {{ .Values.droSync.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.serviceAccount }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount }}
+    namespace: {{ .Values.namespace }}
+{{- end }}
+{{- if .Values.mongoSync.enabled }}
+---
+# scope read to ONLY the dedicated Mongo namespace
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.serviceAccount }}-mongo
+  namespace: {{ .Values.mongoSync.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.serviceAccount }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount }}
+    namespace: {{ .Values.namespace }}
+{{- end }}
+---
+# allow the Jobs to hard-refresh the consuming ArgoCD Applications after writing Vault
+{{- if .Values.deployShared }}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: {{ .Values.serviceAccount }}-app-refresh
+  namespace: {{ .Values.namespace }}
+rules:
+  - apiGroups: ["argoproj.io"]
+    resources: ["applications"]
+    verbs: ["get","list","patch","update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.serviceAccount }}-app-refresh
+  namespace: {{ .Values.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: {{ .Values.serviceAccount }}-app-refresh
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount }}
+    namespace: {{ .Values.namespace }}
+{{- end }}

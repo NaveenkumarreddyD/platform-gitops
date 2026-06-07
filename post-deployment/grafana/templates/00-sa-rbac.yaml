@@ -1,0 +1,20 @@
+# Grafana SA + cluster-monitoring-view + a LONG-LIVED token Secret so the datasource bearer
+# token is populated declaratively (no manual `oc create token` — GitOps-clean).
+apiVersion: v1
+kind: ServiceAccount
+metadata: { name: grafana-sa, namespace: {{ include "grafana.ns" . }} }
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata: { name: grafana-sa-monitoring-view-{{ include "grafana.ns" . }} }
+roleRef: { apiGroup: rbac.authorization.k8s.io, kind: ClusterRole, name: cluster-monitoring-view }
+subjects:
+  - { kind: ServiceAccount, name: grafana-sa, namespace: {{ include "grafana.ns" . }} }
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: grafana-sa-token
+  namespace: {{ include "grafana.ns" . }}
+  annotations: { kubernetes.io/service-account.name: grafana-sa }
+type: kubernetes.io/service-account-token

@@ -1,0 +1,6 @@
+apiVersion: v2
+name: operators
+description: OLM operator installs (namespace + OperatorGroup + Subscription). Cluster-scoped
+  MongoDB Community operator that serves every instance. Add more operators to .Values.operators.
+type: application
+version: 1.0.0

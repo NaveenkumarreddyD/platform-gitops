@@ -1,0 +1,14 @@
+# DEDICATED Mongo for this instance (NOT the shared mas-mongo-ce). Defaults overridden by the
+# platform-gitops 26-mongodb-ce app via HELM_VALUES.
+namespace: mongo-drgitops
+resource: drgitopsapp-mongo
+members: 3
+mongodbVersion: "6.0.12"        # set to a supported MongoCE version
+storageClass: isilon
+dataSize: 20Gi
+logsSize: 5Gi
+adminUser: admin
+slsmongoUser: slsmongo
+# passwords are GENERATE-once in Vault by load-secrets.sh, read here via AVP:
+adminPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/mongo#password>"
+slsmongoPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/sls-mongo#password>"

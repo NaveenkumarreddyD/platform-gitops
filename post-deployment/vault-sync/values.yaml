@@ -1,0 +1,42 @@
+deployShared: true   # create shared SA/ClusterRole/ConfigMap/refresh-Role (set false in instance stacks)
+# identity / paths
+accountId: mas
+clusterId: drroc4
+instanceId: drgitopsapp
+kvMount: secret
+
+# Vault connection (in-cluster service by default)
+vaultAddr: http://vault-active.vault.svc.cluster.local:8200
+vaultCacert: ""                 # set if Vault listener uses TLS
+vaultRole: mas-gitops-writer    # k8s-auth role with the WRITER policy
+
+# where the Jobs run + the SA they use
+namespace: openshift-gitops
+serviceAccount: vault-registration-sync
+
+# images (override with your mirrored/entitled images)
+ocImage: registry.redhat.io/openshift4/ose-cli:latest
+vaultImage: hashicorp/vault:1.18
+
+# wait behaviour
+waitRetries: 80
+waitInterval: 15
+
+slsSync:
+  enabled: true
+  namespace: ""                 # default: mas-<instanceId>-sls (own SLS). Empty = derive.
+  urlOverride: ""               # default: https://sls.<ns>.svc.cluster.local
+droSync:
+  enabled: true
+  namespace: redhat-marketplace
+  urlOverride: ""
+  tokenSecret: ""               # optional explicit secret name holding the api key
+  caSecret: ""                  # optional explicit secret name holding the CA
+mongoSync:
+  enabled: true                 # enable when the dedicated Mongo (mongodbCE) is enabled
+  namespace: mongo-drgitops     # the dedicated Mongo namespace (NOT mongo-<instanceId>)
+  resourceName: ""              # default <instanceId>-mongo (CA secret <resource>-ca)
+
+# Job timeouts (used by _job.tpl)
+activeDeadlineSeconds: 1800
+ttlSecondsAfterFinished: 3600

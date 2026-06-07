@@ -1,0 +1,7 @@
+apiVersion: v2
+name: grafana
+description: Cluster Grafana for MAS monitoring via the Grafana Operator v5 — Grafana CR,
+  a Thanos Querier datasource (SA bearer token, GitOps-clean via a long-lived token Secret),
+  and MAS dashboards. Equivalent of the Ansible-provided Grafana.
+type: application
+version: 1.0.0

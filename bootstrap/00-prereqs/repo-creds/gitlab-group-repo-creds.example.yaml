@@ -1,0 +1,14 @@
+# Example only. Do NOT commit real token.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: gitlab-gitops-group-repo-creds
+  namespace: openshift-gitops
+  labels:
+    argocd.argoproj.io/secret-type: repo-creds
+type: Opaque
+stringData:
+  type: git
+  url: https://gitlab.lac1.biz/gitops
+  username: CHANGE_ME_DEPLOY_TOKEN_USERNAME
+  password: CHANGE_ME_DEPLOY_TOKEN_VALUE

@@ -1,0 +1,4 @@
+apiVersion: v2
+name: jdbc-external
+description: Non-SSL external Oracle JdbcCfg for MAS (locally owned; does NOT modify any IBM chart)
+version: 1.0.0

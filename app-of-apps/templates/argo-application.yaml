@@ -1,0 +1,25 @@
+# The single child for THIS environment: the "gitops" Application. It renders every
+# per-env + hub Application from the gitops/ chart, selecting this env's values files.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ include "aoa.fullname" . }}
+  namespace: {{ .Values.argoNamespace }}
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  source:
+    repoURL: {{ .Values.repoURL }}
+    targetRevision: {{ .Values.targetRevision }}
+    path: gitops
+    helm:
+      valueFiles:
+        - common-values.yaml
+        - {{ .Values.envName }}-common-values.yaml
+        - {{ .Values.envName }}-values.yaml
+  destination:
+    server: {{ .Values.destination }}
+    namespace: {{ .Values.argoNamespace }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=false" ]

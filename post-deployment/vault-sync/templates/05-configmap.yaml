@@ -1,0 +1,14 @@
+{{- if .Values.deployShared }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ .Values.serviceAccount }}-scripts
+  namespace: {{ .Values.namespace }}
+data:
+  harvest.sh: |
+{{ .Files.Get "files/harvest.sh" | indent 4 }}
+  vault-write.sh: |
+{{ .Files.Get "files/vault-write.sh" | indent 4 }}
+  refresh.sh: |
+{{ .Files.Get "files/refresh.sh" | indent 4 }}
+{{- end }}

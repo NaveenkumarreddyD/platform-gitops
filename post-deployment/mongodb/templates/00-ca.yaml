@@ -1,0 +1,32 @@
+# cert-manager self-signed CA -> CA issuer -> server cert (TLS for the replica set).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata: { name: "{{ .Values.resource }}-selfsigned", namespace: "{{ .Values.namespace }}" }
+spec: { selfSigned: {} }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: "{{ .Values.resource }}-ca", namespace: "{{ .Values.namespace }}" }
+spec:
+  isCA: true
+  commonName: "{{ .Values.resource }}-ca"
+  secretName: "{{ .Values.resource }}-ca"
+  duration: 87600h
+  privateKey: { algorithm: RSA, size: 4096 }
+  issuerRef: { name: "{{ .Values.resource }}-selfsigned", kind: Issuer }
+---
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata: { name: "{{ .Values.resource }}-ca-issuer", namespace: "{{ .Values.namespace }}" }
+spec: { ca: { secretName: "{{ .Values.resource }}-ca" } }
+---
+apiVersion: cert-manager.io/v1
+kind: Certificate
+metadata: { name: "{{ .Values.resource }}-server", namespace: "{{ .Values.namespace }}" }
+spec:
+  secretName: "{{ .Values.resource }}-server-cert"
+  duration: 8760h
+  issuerRef: { name: "{{ .Values.resource }}-ca-issuer", kind: Issuer }
+  dnsNames:
+    - "{{ .Values.resource }}-svc.{{ .Values.namespace }}.svc.cluster.local"
+    - "*.{{ .Values.resource }}-svc.{{ .Values.namespace }}.svc.cluster.local"

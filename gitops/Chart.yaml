@@ -1,0 +1,7 @@
+apiVersion: v2
+name: gitops
+description: Generates every Argo CD Application for one environment — hub singletons
+  (Vault, AVP, account-root, Mongo operator, shared sync infra) and the per-instance
+  workloads (Mongo, JDBC, registration-sync). Values are layered common -> env-common -> env.
+type: application
+version: 1.0.0

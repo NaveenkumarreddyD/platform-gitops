@@ -1,0 +1,3 @@
+{{- if .Values.droSync.enabled }}
+{{- include "vrs.job" (dict "mode" "dro" "root" .) }}
+{{- end }}

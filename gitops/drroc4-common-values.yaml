@@ -1,0 +1,3 @@
+clusterId: drroc4
+storageClass: isilon
+vault: { host: vault.apps.drroc4.lac1.biz }

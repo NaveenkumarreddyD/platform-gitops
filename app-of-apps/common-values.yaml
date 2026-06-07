@@ -1,0 +1,7 @@
+# shared by every environment (rarely changes)
+project: mas
+argoNamespace: openshift-gitops
+repoURL: https://gitlab.lac1.biz/gitops/platform-gitops.git
+targetRevision: main
+destination: https://kubernetes.default.svc
+repoSecret: { create: false, username: "", password: "" }

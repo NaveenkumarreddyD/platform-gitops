@@ -1,0 +1,16 @@
+# default operator set (override per cluster in <cluster>-values.yaml)
+operatorsNamespace: platform-operators
+clusterScoped: true            # OperatorGroup watches all namespaces when true
+operators:
+  - name: mongodb-community
+    package: mongodb-enterprise # set to the package as it appears in YOUR catalog source
+    channel: stable
+    source: certified-operators # CatalogSource name
+    sourceNamespace: openshift-marketplace
+    startingCSV: ""             # optional pin, e.g. mongodb-operator.v0.9.0
+  - name: grafana-operator
+    package: grafana-operator
+    channel: v5
+    source: community-operators
+    sourceNamespace: openshift-marketplace
+    startingCSV: 

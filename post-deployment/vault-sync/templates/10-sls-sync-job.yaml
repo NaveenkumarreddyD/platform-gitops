@@ -1,0 +1,3 @@
+{{- if .Values.slsSync.enabled }}
+{{- include "vrs.job" (dict "mode" "sls" "root" .) }}
+{{- end }}

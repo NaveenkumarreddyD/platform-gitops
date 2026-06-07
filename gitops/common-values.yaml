@@ -1,0 +1,52 @@
+# ============ GLOBAL defaults (every env) ============
+project: mas
+argoNamespace: openshift-gitops
+repoServerServiceAccount: default          # actual argocd repo-server SA
+
+platform:  { repo_url: https://gitlab.lac1.biz/gitops/platform-gitops.git, revision: main }
+source:    { repo_url: https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git,   revision: "8.0.0" }
+generator: { repo_url: https://gitlab.lac1.biz/gitops/mas-gitops-config.git, revision: main }
+
+account: { id: mas }
+storageClass: isilon
+images: { oc: registry.redhat.io/openshift4/ose-cli:latest, vault: hashicorp/vault:1.18 }
+
+vault:
+  enabled: true
+  addr: http://vault-active.vault.svc.cluster.local:8200
+  writerRole: mas-gitops-writer
+  chartVersion: "0.32.0"
+  imageRepository: registry.connect.redhat.com/hashicorp/vault
+  imageTag: "1.21.2-ubi"
+  dataSize: 20Gi
+  auditSize: 10Gi
+  replicas: 3
+  host: vault.example.local                # OVERRIDE per env (env-common)
+
+avp: { role: mas-gitops }
+accountRoot: { autoSync: false, clusterAdminRole: true, applicationAdminRole: true }
+grafana: { namespace: grafana }
+mongodbOperator: { enabled: true, namespace: platform-operators }
+
+# which Applications to emit
+enable:
+  vault: true
+  avp: true
+  accountRoot: true
+  operators: true
+  mongodb: true
+  jdbc: true
+  registrationSync: true
+  grafana: true
+
+# duplicates owned by app-of-apps — keep off here
+createProject: false
+repoSecret: { create: false, username: "", password: "" }
+
+# ---- per-env placeholders (set in <env>-* files) ----
+clusterId: ""
+instanceId: ""
+mongo: { namespace: "", members: 3, version: "6.0.12", adminUser: admin }
+jdbc:  { sslEnabled: false }
+dro:   { namespace: redhat-marketplace }
+sls:   { syncEnabled: true }

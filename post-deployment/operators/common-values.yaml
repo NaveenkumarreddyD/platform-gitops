@@ -1,0 +1,2 @@
+operatorsNamespace: platform-operators
+clusterScoped: true

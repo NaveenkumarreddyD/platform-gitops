@@ -1,0 +1,9 @@
+apiVersion: v2
+name: vault-registration-sync
+description: >-
+  PostSync Jobs that harvest runtime-generated SLS and DRO registration values
+  and write them to Vault — the Vault-backend replacement for IBM's AWS-only
+  postsync-update-sm jobs. IBM charts are NOT modified.
+type: application
+version: 1.0.0
+appVersion: "1.0.0"

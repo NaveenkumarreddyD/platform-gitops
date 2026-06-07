@@ -1,0 +1,3 @@
+clusterId: nroc4
+storageClass: isilon
+vault: { host: vault.apps.nroc4.lac1.biz }

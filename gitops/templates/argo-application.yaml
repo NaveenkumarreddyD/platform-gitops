@@ -1,0 +1,265 @@
+# ============================================================================
+# All Argo CD Applications for ONE environment. Sync-wave order:
+#   -10 AVP  |  10 Vault  |  20 Mongo operator  |  25 Mongo CR  |  28 mongo→Vault gate
+#   30 account-root (Core/Manage)  |  40 JDBC  |  50 SLS/DRO sync
+# ============================================================================
+{{- $repo := .Values.platform.repo_url -}}
+{{- $rev  := .Values.platform.revision -}}
+{{- $ns   := .Values.argoNamespace -}}
+
+{{- if .Values.enable.vault }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hashicorp-vault-server
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "10" }
+spec:
+  project: {{ .Values.project }}
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: {{ .Values.vault.chartVersion | quote }}
+    helm:
+      releaseName: vault
+      values: |
+        global: { openshift: true, enabled: true }
+        injector: { enabled: false }
+        server:
+          enabled: true
+          image: { repository: {{ .Values.vault.imageRepository }}, tag: {{ .Values.vault.imageTag | quote }} }
+          route: { enabled: true, host: {{ .Values.vault.host }}, tls: { termination: edge } }
+          dataStorage:  { enabled: true, size: {{ .Values.vault.dataSize }},  storageClass: {{ .Values.storageClass }}, accessMode: ReadWriteOnce }
+          auditStorage: { enabled: true, size: {{ .Values.vault.auditSize }}, storageClass: {{ .Values.storageClass }}, accessMode: ReadWriteOnce }
+          ha:
+            enabled: true
+            replicas: {{ .Values.vault.replicas }}
+            raft:
+              enabled: true
+              setNodeId: true
+              config: |
+                ui = true
+                listener "tcp" { address = "[::]:8200"  cluster_address = "[::]:8201"  tls_disable = 1 }
+                storage "raft" {
+                  path = "/vault/data"
+                  retry_join { leader_api_addr = "http://vault-0.vault-internal:8200" }
+                  retry_join { leader_api_addr = "http://vault-1.vault-internal:8200" }
+                  retry_join { leader_api_addr = "http://vault-2.vault-internal:8200" }
+                }
+                service_registration "kubernetes" {}
+          readinessProbe: { enabled: true, path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204" }
+          livenessProbe: { enabled: false }
+        ui: { enabled: true, serviceType: ClusterIP }
+  destination: { server: https://kubernetes.default.svc, namespace: vault }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true" ]
+{{- end }}
+{{- if .Values.enable.operators }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mongodb-ce-operator
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "20" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.mongodbOperator.namespace }} }
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: post-deployment/operators
+    helm:
+      valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]
+{{- end }}
+{{- if .Values.enable.mongodb }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mongodb-ce-{{ .Values.instanceId }}
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "25" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.mongoNs" . }} }
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: post-deployment/mongodb
+    plugin:
+      name: argocd-vault-plugin-helm
+      env:
+        - name: HELM_VALUES
+          value: |
+            namespace: {{ include "gitops.mongoNs" . }}
+            resource: {{ .Values.instanceId }}-mongo
+            members: {{ .Values.mongo.members }}
+            mongodbVersion: "{{ .Values.mongo.version }}"
+            storageClass: {{ .Values.storageClass }}
+            adminUser: {{ .Values.mongo.adminUser }}
+            adminPasswordPath: "<path:{{ include "gitops.path" . }}/mongo#password>"
+            slsmongoPasswordPath: "<path:{{ include "gitops.path" . }}/sls-mongo#password>"
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true" ]
+{{- end }}
+{{- if and .Values.enable.registrationSync .Values.enable.mongodb }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-sync-mongo-{{ .Values.instanceId }}
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "28" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ $ns }} }
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: post-deployment/vault-sync
+    helm:
+      values: |
+        accountId: {{ .Values.account.id }}
+        clusterId: {{ .Values.clusterId }}
+        instanceId: {{ .Values.instanceId }}
+        vaultAddr: {{ .Values.vault.addr }}
+        vaultRole: {{ .Values.vault.writerRole }}
+        namespace: {{ $ns }}
+        serviceAccount: vault-registration-sync
+        deployShared: true
+        ocImage: {{ .Values.images.oc }}
+        vaultImage: {{ .Values.images.vault }}
+        slsSync: { enabled: false }
+        droSync: { enabled: false, namespace: {{ .Values.dro.namespace }} }
+        mongoSync: { enabled: true, namespace: {{ include "gitops.mongoNs" . }} }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+{{- end }}
+{{- if .Values.enable.accountRoot }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: ibm-mas-account-root
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "30" }
+spec:
+  project: {{ .Values.project }}
+  destination: { namespace: {{ $ns }}, server: https://kubernetes.default.svc }
+  source:
+    repoURL: {{ .Values.source.repo_url | quote }}
+    targetRevision: {{ .Values.source.revision | quote }}
+    path: root-applications/ibm-mas-account-root
+    helm:
+      values: |
+        avp: { name: argocd-vault-plugin-helm, secret: argocd-vault-plugin-credentials, values_varname: HELM_VALUES }
+        account: { id: {{ .Values.account.id }} }
+        source:    { repo_url: {{ .Values.source.repo_url }},    revision: {{ .Values.source.revision }} }
+        generator: { repo_url: {{ .Values.generator.repo_url }}, revision: {{ .Values.generator.revision }} }
+        argo:
+          namespace: {{ $ns }}
+          projects: { rootapps: {{ .Values.project }}, apps: {{ .Values.project }} }
+        cluster_admin_role: {{ .Values.accountRoot.clusterAdminRole }}
+        application_admin_role: {{ .Values.accountRoot.applicationAdminRole }}
+        auto_delete: false
+{{- if .Values.accountRoot.autoSync }}
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+{{- end }}
+{{- end }}
+{{- if .Values.enable.jdbc }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.instanceId }}-jdbc-system
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "40" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.coreNs" . }} }
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: post-deployment/jdbc
+    plugin:
+      name: argocd-vault-plugin-helm
+      env:
+        - name: HELM_VALUES
+          value: |
+            instance_id: {{ .Values.instanceId }}
+            mas_config_name: {{ .Values.instanceId }}-jdbc-system
+            jdbc_ssl_enabled: {{ .Values.jdbc.sslEnabled }}
+            jdbc_url: "<path:{{ include "gitops.path" . }}/jdbc-system#jdbc_url>"
+            jdbc_username: "<path:{{ include "gitops.path" . }}/jdbc-system#username>"
+            jdbc_password: "<path:{{ include "gitops.path" . }}/jdbc-system#password>"
+            jdbc_ca_crt: "<path:{{ include "gitops.path" . }}/jdbc-system#ca.crt>"
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+{{- end }}
+{{- if .Values.enable.registrationSync }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-registration-sync-{{ .Values.instanceId }}
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "50" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ $ns }} }
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: post-deployment/vault-sync
+    helm:
+      values: |
+        accountId: {{ .Values.account.id }}
+        clusterId: {{ .Values.clusterId }}
+        instanceId: {{ .Values.instanceId }}
+        vaultAddr: {{ .Values.vault.addr }}
+        vaultRole: {{ .Values.vault.writerRole }}
+        namespace: {{ $ns }}
+        serviceAccount: vault-registration-sync
+        deployShared: false
+        ocImage: {{ .Values.images.oc }}
+        vaultImage: {{ .Values.images.vault }}
+        slsSync: { enabled: {{ .Values.sls.syncEnabled }}, namespace: {{ include "gitops.slsNs" . | quote }} }
+        droSync: { enabled: true, namespace: {{ .Values.dro.namespace }} }
+        mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+{{- end }}
+{{- if .Values.enable.grafana }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-{{ .Values.clusterId }}
+  namespace: {{ $ns }}
+  annotations: { argocd.argoproj.io/sync-wave: "60" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.grafana.namespace }} }
+  source:
+    repoURL: {{ $repo | quote }}
+    targetRevision: {{ $rev | quote }}
+    path: post-deployment/grafana
+    helm:
+      valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true" ]
+{{- end }}

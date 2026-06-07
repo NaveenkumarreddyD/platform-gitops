@@ -1,0 +1,4 @@
+namespace: grafana
+grafanaVersion: "10.4.3"
+adminUser: root
+thanosUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091

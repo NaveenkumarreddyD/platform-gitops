@@ -1,0 +1,38 @@
+# Locally-owned external Oracle JdbcCfg. Does NOT modify any IBM chart.
+# jdbc_ssl_enabled=false -> sslEnabled:false, no certificates (matches Ansible TCP/1521).
+# jdbc_ssl_enabled=true  -> sslEnabled:true + certificates[] from the Vault CA (TCPS/2484).
+---
+apiVersion: v1
+kind: Secret
+type: Opaque
+metadata:
+  name: "{{ .Values.mas_config_name }}-credentials"
+  namespace: "mas-{{ .Values.instance_id }}-core"
+  annotations:
+    argocd.argoproj.io/sync-wave: "150"
+stringData:
+  username: "{{ .Values.jdbc_username }}"
+  password: "{{ .Values.jdbc_password }}"
+---
+apiVersion: config.mas.ibm.com/v1
+kind: JdbcCfg
+metadata:
+  name: "{{ .Values.mas_config_name }}"
+  namespace: "mas-{{ .Values.instance_id }}-core"
+  annotations:
+    argocd.argoproj.io/sync-wave: "151"
+  labels:
+    mas.ibm.com/configScope: system
+    mas.ibm.com/instanceId: "{{ .Values.instance_id }}"
+spec:
+  displayName: "{{ .Values.mas_config_name }}"
+  config:
+    url: "{{ .Values.jdbc_url }}"
+    sslEnabled: {{ if .Values.jdbc_ssl_enabled }}true{{ else }}false{{ end }}
+    credentials:
+      secretName: "{{ .Values.mas_config_name }}-credentials"
+{{- if .Values.jdbc_ssl_enabled }}
+  certificates:
+    - alias: ca
+      crt: "{{ .Values.jdbc_ca_crt }}"
+{{- end }}

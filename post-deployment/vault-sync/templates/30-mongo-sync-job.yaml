@@ -1,0 +1,3 @@
+{{- if .Values.mongoSync.enabled }}
+{{- include "vrs.job" (dict "mode" "mongo" "root" .) }}
+{{- end }}

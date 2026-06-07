@@ -1,0 +1,102 @@
+spec:
+  repo:
+    volumes:
+      - name: cmp-plugin
+        configMap:
+          name: cmp-plugin
+      - name: custom-tools
+        emptyDir: {}
+      - name: cmp-tmp
+        emptyDir: {}
+      - name: avp-k8s-token
+        projected:
+          defaultMode: 420
+          sources:
+            - serviceAccountToken:
+                path: token
+                expirationSeconds: 3600
+            - configMap:
+                name: kube-root-ca.crt
+                items:
+                  - key: ca.crt
+                    path: ca.crt
+            - downwardAPI:
+                items:
+                  - path: namespace
+                    fieldRef:
+                      fieldPath: metadata.namespace
+    initContainers:
+      - name: download-tools
+        image: registry.access.redhat.com/ubi9/ubi:latest
+        imagePullPolicy: IfNotPresent
+        env:
+          - name: AVP_VERSION
+            value: "1.18.0"
+          - name: HELM_VERSION
+            value: "v3.14.4"
+        command: ["sh", "-c"]
+        args:
+          - |
+            set -euo pipefail
+            curl -fL "https://github.com/argoproj-labs/argocd-vault-plugin/releases/download/v${AVP_VERSION}/argocd-vault-plugin_${AVP_VERSION}_linux_amd64" -o /custom-tools/argocd-vault-plugin
+            chmod +x /custom-tools/argocd-vault-plugin
+            curl -fL "https://get.helm.sh/helm-${HELM_VERSION}-linux-amd64.tar.gz" -o /custom-tools/helm.tar.gz
+            tar -xzf /custom-tools/helm.tar.gz -C /custom-tools
+            mv /custom-tools/linux-amd64/helm /custom-tools/helm
+            chmod +x /custom-tools/helm
+            rm -rf /custom-tools/linux-amd64 /custom-tools/helm.tar.gz
+            ls -l /custom-tools
+        volumeMounts:
+          - name: custom-tools
+            mountPath: /custom-tools
+    sidecarContainers:
+      - name: avp-helm
+        image: registry.access.redhat.com/ubi9/ubi:latest
+        imagePullPolicy: IfNotPresent
+        command:
+          - /var/run/argocd/argocd-cmp-server
+        env:
+          - name: HELM_CACHE_HOME
+            value: /tmp/helm/cache
+          - name: HELM_CONFIG_HOME
+            value: /tmp/helm/config
+          - name: HELM_DATA_HOME
+            value: /tmp/helm/data
+          - name: ARGOCD_EXEC_TIMEOUT
+            value: "180"
+          # AVP Vault connection config — must live on the sidecar itself.
+          # App-supplied plugin.env (AVP_SECRET) is renamed ARGOCD_ENV_* and
+          # is invisible to AVP, so set it here. These are non-sensitive.
+          - name: AVP_TYPE
+            value: vault
+          - name: AVP_AUTH_TYPE
+            value: k8s
+          - name: AVP_K8S_ROLE
+            value: mas-gitops
+          - name: VAULT_ADDR
+            value: http://vault-active.vault.svc.cluster.local:8200
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
+        volumeMounts:
+          - name: var-files
+            mountPath: /var/run/argocd
+          - name: plugins
+            mountPath: /home/argocd/cmp-server/plugins
+          - name: cmp-tmp
+            mountPath: /tmp
+          - name: cmp-plugin
+            mountPath: /home/argocd/cmp-server/config/plugin.yaml
+            subPath: avp-helm.yaml
+          - name: custom-tools
+            mountPath: /usr/local/bin/argocd-vault-plugin
+            subPath: argocd-vault-plugin
+          - name: custom-tools
+            mountPath: /usr/local/bin/helm
+            subPath: helm
+          - name: avp-k8s-token
+            mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+            readOnly: true

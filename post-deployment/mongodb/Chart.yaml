@@ -1,0 +1,4 @@
+apiVersion: v2
+name: mongodb-ce
+description: MongoDB Community (replica set + TLS CA + admin user) for MAS — self-owned, GitOps install
+version: 1.0.0
