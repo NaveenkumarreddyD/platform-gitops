@@ -19,8 +19,7 @@ docs/        SETUP-GUIDE.md (run-each-step) and STRUCTURE.md (architecture).
 # 1. fill in real repo creds: bootstrap/00-prereqs/repo-creds/
 ./bootstrap/apply.sh <nroc4|roc4|drroc4>      # applies ONLY the root app; ArgoCD generates the rest
 # 2. init/unseal Vault, load static secrets, render config, and prepare Mongo prerequisites:
-./scripts/deploy.sh ../mas-config-repo/envs/<cluster>.env
-./scripts/prepare-prereqs.sh ../mas-config-repo/envs/<cluster>.env
+./scripts/install-gated.sh ../mas-config-repo/envs/<cluster>.env
 # 3. manually sync IBM MAS account-root only after preflight passes
 ./scripts/sync-mas-account-root.sh ../mas-config-repo/envs/<cluster>.env
 # 4. after SLS initializes, sync runtime registration

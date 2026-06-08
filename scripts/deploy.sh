@@ -3,9 +3,23 @@ set -euo pipefail
 # One-command post-Vault deploy: configure Vault auth -> load static secrets -> static preflight
 # -> render config -> commit/push. It deliberately does NOT sync IBM MAS account-root.
 # Usage:  export VAULT_TOKEN=<root> (+ IBM_ENTITLEMENT_KEY/MAS_LICENSE_FILE/JDBC_* for load)
-#         ./scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
+#         ./scripts/deploy.sh [--yes] [--no-push] ../mas-config-repo/envs/drroc4.env
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
-ENVFILE="${1:?usage: deploy.sh <path/to/cluster.env>}"
+ASSUME_YES=0
+NO_PUSH=0
+ENVFILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --yes|-y) ASSUME_YES=1; shift ;;
+    --no-push) NO_PUSH=1; shift ;;
+    -h|--help)
+      echo "usage: deploy.sh [--yes] [--no-push] <path/to/cluster.env>"
+      exit 0
+      ;;
+    *) ENVFILE="$1"; shift ;;
+  esac
+done
+ENVFILE="${ENVFILE:?usage: deploy.sh [--yes] [--no-push] <path/to/cluster.env>}"
 CONFIG_REPO="${CONFIG_REPO:-$(cd "$(dirname "$ENVFILE")/.." && pwd)}"
 CLUSTER="$(basename "$ENVFILE" .env)"
 say(){ printf '\n=== %s ===\n' "$*"; }
@@ -39,7 +53,16 @@ if [[ "$rc" == "10" ]]; then
   echo ">> Nothing to push. Next: run ./scripts/prepare-prereqs.sh $ENVFILE"
   exit 0
 fi
-read -r -p "Commit and push ONLY the staged rendered MAS config above? [y/N] " a
+if [[ "$NO_PUSH" == "1" ]]; then
+  echo ">> --no-push set. Review with: cd $CONFIG_REPO && git diff --cached"
+  echo ">> Commit/push manually if intended, then run ./scripts/prepare-prereqs.sh $ENVFILE"
+  exit 0
+fi
+if [[ "$ASSUME_YES" == "1" ]]; then
+  a=y
+else
+  read -r -p "Commit and push ONLY the staged rendered MAS config above? [y/N] " a
+fi
 if [[ "$a" == y ]]; then
   ( cd "$CONFIG_REPO" && git commit -m "deploy: $CLUSTER" && git push )
   echo ">> pushed. Next: run ./scripts/prepare-prereqs.sh $ENVFILE"

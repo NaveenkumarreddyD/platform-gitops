@@ -32,12 +32,9 @@ bash bootstrap/apply.sh drroc4                 # prereqs + AVP sidecar + root ap
 bash scripts/init-vault.sh
 export VAULT_TOKEN=<root_token_it_prints>
 
-# load static prerequisite secrets and render/push MAS config.
+# load static secrets, render/push config, drive Mongo prereqs, publish Mongo CA, run full preflight.
 # MAS account-root is still manual after this command.
-bash scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
-
-# drive Mongo prerequisite apps, wait for Mongo Running, publish Mongo CA, run full preflight.
-bash scripts/prepare-prereqs.sh ../mas-config-repo/envs/drroc4.env
+bash scripts/install-gated.sh ../mas-config-repo/envs/drroc4.env
 
 # [manual MAS gate] only now sync IBM account-root, which starts MAS Core/SLS/Manage generation:
 bash scripts/sync-mas-account-root.sh ../mas-config-repo/envs/drroc4.env
@@ -52,10 +49,11 @@ oc patch installplan <name> -n <ns> --type merge -p '{"spec":{"approved":true}}'
 oc get applications -n openshift-gitops -w     # watch it converge in wave order
 ```
 
-`deploy.sh` wraps `setup-vault-auth.sh` → `load-secrets.sh` → static `preflight-vault.sh` →
-`render.py` → commit. `prepare-prereqs.sh` then waits for MongoDB, publishes Mongo CA into Vault,
-and runs the full preflight. The MAS `ibm-mas-account-root` Application is intentionally manual.
-Do not sync it until Vault contains entitlement, license, Mongo credentials/CA, SLS Mongo
+`install-gated.sh` wraps environment checks, `deploy.sh`, and `prepare-prereqs.sh`. `deploy.sh`
+configures Vault auth, loads static secrets, runs static preflight, renders MAS config, and commits
+only `mas/<cluster>` rendered files. `prepare-prereqs.sh` waits for MongoDB, publishes Mongo CA into
+Vault, and runs the full preflight. The MAS `ibm-mas-account-root` Application is intentionally
+manual. Do not sync it until Vault contains entitlement, license, Mongo credentials/CA, SLS Mongo
 credentials/CA, and JDBC credentials.
 
 ---
