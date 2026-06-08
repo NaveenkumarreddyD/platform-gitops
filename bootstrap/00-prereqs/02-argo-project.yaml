@@ -5,10 +5,29 @@ metadata:
   namespace: openshift-gitops
 spec:
   description: MAS GitOps applications
-  sourceRepos: [ "*" ]
+  # SOURCES — only these repos may be deployed from (match the repo_urls in gitops/values.yaml;
+  # the glob covers platform-gitops, ibm-mas-gitops, mas-config-repo). Update the host if not GitLab.
+  sourceRepos:
+    - https://gitlab.lac1.biz/gitops/*
+    - https://helm.releases.hashicorp.com        # Vault chart
+    - https://mongodb.github.io/helm-charts       # MongoDB Community Operator chart
+  # DESTINATIONS — in-cluster ONLY (locks out cross-cluster deploys), scoped to the MAS/platform
+  # namespaces. If a MAS-created namespace ever falls outside these prefixes, add its pattern here
+  # (or temporarily widen to `namespace: '*'`, which still keeps the in-cluster server lock).
   destinations:
-    - { server: "*", namespace: "*" }
+    - { server: https://kubernetes.default.svc, namespace: 'mas-*' }            # Core/Manage/SLS per instance
+    - { server: https://kubernetes.default.svc, namespace: 'mongo-*' }           # dedicated Mongo
+    - { server: https://kubernetes.default.svc, namespace: 'ibm-*' }             # ibm-common-services, ibm-sls, DRO, etc.
+    - { server: https://kubernetes.default.svc, namespace: 'cert-manager*' }     # cert-manager (+ -operator)
+    - { server: https://kubernetes.default.svc, namespace: 'openshift-*' }       # openshift-gitops (Apps live here), monitoring
+    - { server: https://kubernetes.default.svc, namespace: vault }
+    - { server: https://kubernetes.default.svc, namespace: platform-operators }
+    - { server: https://kubernetes.default.svc, namespace: grafana }
+    - { server: https://kubernetes.default.svc, namespace: redhat-marketplace }  # DRO subscription
+  # RESOURCE KINDS — left open on purpose: MAS + its operators create a wide, hard-to-enumerate
+  # set of cluster- and namespace-scoped kinds, and restricting these reliably blocks the install.
+  # The real guardrails above (sources + in-cluster destinations) catch the dangerous mistakes.
   clusterResourceWhitelist:
-    - { group: "*", kind: "*" }
+    - { group: '*', kind: '*' }
   namespaceResourceWhitelist:
-    - { group: "*", kind: "*" }
+    - { group: '*', kind: '*' }
