@@ -82,10 +82,10 @@ retry until then.
 
 ## 2. Configure platform-gitops (edit, commit, push — before bootstrap)
 
-**2.1 `gitops/values.yaml` — fix two known defaults:**
-- `generator.repo_url:` → your **actual** config repo. It currently reads
-  `…/mas-gitops-config.git`; set it to `…/mas-config-repo.git` (or rename the repo to match).
-  If these disagree, `account-root` globs an empty repo and no MAS config deploys.
+**2.1 `gitops/values.yaml` — verify repo defaults:**
+- `generator.repo_url:` must point to your **actual** config repo. The default in this repo is
+  `…/mas-config-repo.git`; update it only if your GitLab project uses a different name.
+  If this URL is wrong, `account-root` globs an empty repo and no MAS config deploys.
 - Confirm `platform.repo_url` / `source.repo_url` point at your GitLab mirrors.
 
 (The old `repoServerServiceAccount` knob is gone — the token-review RBAC in `bootstrap/00-prereqs/`
@@ -248,8 +248,8 @@ Hub setup (§1) is done once. Per new cluster:
 2. `mas-config-repo/envs/<cluster>.env` (the ~6 values that differ).
 3. `./bootstrap/apply.sh <env>` → Vault init/auth/load (§4–§5) → render+commit config (§6) → gates (§7).
 
-No template edits. `scripts/deploy-cluster.sh <cluster> --load` chains render → load → preflight →
-status for you once the env file + secret material are in place.
+No template edits. `scripts/deploy.sh ../mas-config-repo/envs/<cluster>.env` chains Vault auth,
+secret loading, preflight, render, and config commit once the env file and secret material are ready.
 
 ---
 
