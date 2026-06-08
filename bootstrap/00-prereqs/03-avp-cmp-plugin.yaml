@@ -1,10 +1,10 @@
+# Argo CD Vault Plugin: the CMP plugin definition. Mounted by the repo-server AVP sidecar
+# (added by ../argocd-cr-avp-sidecar-patch.yaml). Day-0 prerequisite, applied by apply.sh.
 apiVersion: v1
 kind: ConfigMap
 metadata:
   name: cmp-plugin
   namespace: openshift-gitops
-  annotations:
-    argocd.argoproj.io/sync-wave: "20"
 data:
   avp-helm.yaml: |
     apiVersion: argoproj.io/v1alpha1
@@ -13,13 +13,13 @@ data:
       name: argocd-vault-plugin-helm
     spec:
       init:
-        command: ["sh", "-c"]
+        command: ["sh","-c"]
         args: ["helm dependency build || true"]
       generate:
-        command: ["sh", "-c"]
+        command: ["sh","-c"]
         args:
           - 'helm template "$ARGOCD_APP_NAME" --namespace "$ARGOCD_APP_NAMESPACE" --include-crds -f <(echo "$ARGOCD_ENV_HELM_VALUES") . | argocd-vault-plugin generate -'
       discover:
         find:
-          command: ["sh", "-c"]
+          command: ["sh","-c"]
           args: ["find . -name Chart.yaml"]

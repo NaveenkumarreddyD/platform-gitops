@@ -29,27 +29,20 @@ Have ready:
 
 ---
 
-## 1. One-time hub setup (per management cluster — do once, not per cluster)
+## 1. Prepare credentials (the only thing to fill in before bootstrap)
 
-**1.1 Git trust + repo credentials**
+Copy the repo-creds example to a real file and add your GitLab token so ArgoCD can pull the repos:
 ```bash
 cd platform-gitops
-oc apply -f bootstrap/00-prereqs/00-gitlab-ca-configmap.yaml
-oc apply -f bootstrap/00-prereqs/01-argocd-cluster-admin-rbac.yaml
-# fill in real creds from the example, then:
-oc apply -f bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.example.yaml
+cp bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.example.yaml \
+   bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml
+$EDITOR bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml      # real URL + token
 ```
-
-**1.2 Install the AVP sidecar on the repo-server** (so ArgoCD can resolve `<path:...>`)
-```bash
-oc apply -f argocd/cmp-plugin-configmap.yaml
-oc apply -f argocd/argocd-vault-plugin-credentials.example.yaml      # k8s-auth: no secret material needed
-oc patch argocd openshift-gitops -n openshift-gitops --type merge \
-  --patch-file argocd/argocd-cr-avp-sidecar-patch.yaml
-oc rollout restart deploy/openshift-gitops-repo-server -n openshift-gitops
-```
-AVP can't reach Vault yet — that's fine, nothing is syncing that needs it. Vault comes up in §3
-and gets its auth role in §4; the secret-consuming Applications retry until then.
+Everything else day-0 — CA trust, RBAC, the `mas` AppProject, and the **full AVP enablement**
+(CMP plugin, Vault credentials, token-review RBAC, and the repo-server sidecar patch) — lives in
+`bootstrap/` and is applied for you by `apply.sh` in §3. There is no separate AVP step and no
+`argocd/` folder anymore. AVP can't reach Vault until §4–§5; the secret-consuming Applications
+retry until then.
 
 ---
 
@@ -59,9 +52,10 @@ and gets its auth role in §4; the secret-consuming Applications retry until the
 - `generator.repo_url:` → your **actual** config repo. It currently reads
   `…/mas-gitops-config.git`; set it to `…/mas-config-repo.git` (or rename the repo to match).
   If these disagree, `account-root` globs an empty repo and no MAS config deploys.
-- `repoServerServiceAccount:` → the real repo-server SA. On stock OpenShift GitOps that's
-  `openshift-gitops-argocd-repo-server` (not `default`). The token-review RBAC binds to this.
 - Confirm `platform.repo_url` / `source.repo_url` point at your GitLab mirrors.
+
+(The old `repoServerServiceAccount` knob is gone — the token-review RBAC in `bootstrap/00-prereqs/`
+already binds the correct `openshift-gitops-argocd-repo-server` SA.)
 
 **2.2 Per-env values** (already set for drroc4 — verify):
 - `gitops/drroc4-common-values.yaml`: `clusterId: drroc4`, `storageClass: isilon`,
@@ -86,8 +80,9 @@ git add -A && git commit -m "drroc4 platform config" && git push
 ```bash
 ./bootstrap/apply.sh drroc4
 ```
-This applies `00-prereqs/` (CA, RBAC, repo creds, the `mas` AppProject) then renders `gitops/`
-and applies it — seeding the self-managing root `platform-drroc4`. ArgoCD now owns everything
+This applies `00-prereqs/` (CA, RBAC, the `mas` AppProject, repo creds, and all AVP resources),
+patches the repo-server with the AVP sidecar and restarts it, then renders `gitops/` and applies
+it — seeding the self-managing root `platform-drroc4`. ArgoCD now owns everything
 and begins syncing by sync-wave:
 
 ```

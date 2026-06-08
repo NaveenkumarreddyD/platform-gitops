@@ -3,8 +3,10 @@
 Three tiers, one job each:
 
 ```
-bootstrap/    DAY-0 seed (imperative, once per cluster). 00-prereqs/ = GitLab CA, Argo RBAC,
-              repo creds, the `mas` AppProject. apply.sh seeds the gitops root, then ArgoCD owns it.
+bootstrap/    DAY-0 seed (imperative, once per cluster) — the ONLY manual step. 00-prereqs/ =
+              GitLab CA, Argo RBAC, `mas` AppProject, repo creds, AND all AVP enablement (CMP
+              plugin, Vault creds, token-review RBAC). apply.sh applies those, patches the
+              repo-server with the AVP sidecar, then seeds the gitops root. ArgoCD owns the rest.
 gitops/       THE GENERATOR (self-healing). Emits the self-managing root Application + all
               workload Applications, sync-wave ordered. Edit <env>-*.yaml here to change what
               deploys; ArgoCD reconciles. Values layered: common -> <env>-common -> <env>.
@@ -14,7 +16,6 @@ workloads/    The actual Helm charts the Applications point at:
   jdbc/         external Oracle JdbcCfg
   vault-sync/   registration-sync Jobs (mongo gate + SLS/DRO -> Vault)
   grafana/      Grafana CR + Thanos datasource + dashboards
-argocd/       AVP repo-server sidecar patch (manual one-time)
 scripts/, vault-auth/, docs/
 ```
 

@@ -1,7 +1,6 @@
 # ============ GLOBAL defaults (every env) ============
 project: mas
 argoNamespace: openshift-gitops
-repoServerServiceAccount: default          # actual argocd repo-server SA
 
 platform:  { repo_url: https://gitlab.lac1.biz/gitops/platform-gitops.git, revision: main }
 source:    { repo_url: https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git,   revision: "8.0.0" }
@@ -23,7 +22,6 @@ vault:
   replicas: 3
   host: vault.example.local                # OVERRIDE per env (env-common)
 
-avp: { role: mas-gitops }
 accountRoot: { autoSync: false, clusterAdminRole: true, applicationAdminRole: true }
 grafana: { namespace: grafana }
 operatorsNamespace: platform-operators
@@ -32,7 +30,6 @@ mongoOperator: { repo: https://mongodb.github.io/helm-charts, chart: community-o
 # which Applications to emit
 enable:
   vault: true
-  avp: true
   accountRoot: true
   operators: true
   mongodb: true
