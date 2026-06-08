@@ -12,7 +12,9 @@ gitops/       APP-OF-APPS GENERATOR (self-healing). One file per Application:
                 templates/app-10-vault.yaml ... app-60-grafana.yaml   the 9 children (wave-ordered)
               The seed points at path: gitops, so ArgoCD renders this chart -> generates the 9
               children (and re-renders the seed = self-managing). Edit <env>-*.yaml to change what
-              deploys; ArgoCD reconciles. Values layered: common -> <env>-common -> <env>.
+              deploys; ArgoCD reconciles. Values: common-values.yaml (shared base) +
+                envs/<cluster>/common.yaml (cluster-scope) + envs/<cluster>/values.yaml (instance).
+              One folder per cluster under envs/ — scales cleanly; no flat sprawl.
 workloads/    The actual Helm charts the Applications point at:
   operators/    grafana-operator (OLM, pinned v5.21.2 for OCP < 4.19)
   mongodb/      MongoDBCommunity CR (3x, 6.0.12, 20Gi+20Gi, TLS+SCRAM)  [operator via Helm chart]
@@ -34,7 +36,7 @@ platform-<env>  (now ArgoCD-managed, self-heals)
 ```
 
 ## Add a cluster/env
-1. `gitops/`: add `<env>-common-values.yaml` (clusterId, vault.host) + `<env>-values.yaml` (instanceId, mongo ns, ...).
-2. `workloads/operators` + `workloads/grafana`: add `<env>-values.yaml` (usually just overrides).
+1. `gitops/envs/<cluster>/`: copy `envs/_example/` -> `common.yaml` (clusterId, storageClass, vault.host) + `values.yaml` (instanceId, mongo ns, jdbc, dro, sls).
+2. (operators + grafana need NOTHING per-cluster — they render from their own values.yaml.)
 3. `mas-config-repo`: add `envs/<cluster>.env` + `render.py <cluster>`.
 4. `./bootstrap/apply.sh <env>` on that cluster. No template edits.

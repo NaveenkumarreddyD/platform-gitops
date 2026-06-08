@@ -21,8 +21,8 @@ oc rollout status  deploy/openshift-gitops-repo-server -n "$NS" --timeout=180s |
 echo ">> 3/4 app-of-apps: apply ONLY the seed; ArgoCD generates the 9 child Applications"
 helm template platform "$ROOT/gitops" \
   -f "$ROOT/gitops/common-values.yaml" \
-  -f "$ROOT/gitops/${ENV}-common-values.yaml" \
-  -f "$ROOT/gitops/${ENV}-values.yaml" \
+  -f "$ROOT/gitops/envs/${ENV}/common.yaml" \
+  -f "$ROOT/gitops/envs/${ENV}/values.yaml" \
   --show-only gitops/templates/seed-application.yaml | oc apply -f -
 
 echo ">> 4/4 done. The seed (platform-$ENV) now generates + self-heals everything."

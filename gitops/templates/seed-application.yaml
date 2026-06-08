@@ -18,8 +18,8 @@ spec:
     helm:
       valueFiles:
         - common-values.yaml
-        - {{ .Values.clusterId }}-common-values.yaml
-        - {{ .Values.clusterId }}-values.yaml
+        - envs/{{ .Values.clusterId }}/common.yaml
+        - envs/{{ .Values.clusterId }}/values.yaml
   destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.argoNamespace }} }
   syncPolicy:
     automated: { prune: true, selfHeal: true }

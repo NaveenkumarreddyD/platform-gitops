@@ -16,8 +16,6 @@ spec:
     repoURL: {{ .Values.platform.repo_url | quote }}
     targetRevision: {{ .Values.platform.revision | quote }}
     path: workloads/operators
-    helm:
-      valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]

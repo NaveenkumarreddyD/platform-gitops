@@ -1,0 +1,4 @@
+# cluster-scope (same for every instance on this cluster)
+clusterId: CHANGE_ME            # e.g. nroc4 — also the folder name envs/<clusterId>/
+storageClass: isilon
+vault: { host: vault.apps.CHANGE_ME.lac1.biz }

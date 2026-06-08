@@ -58,9 +58,9 @@ retry until then.
 already binds the correct `openshift-gitops-argocd-repo-server` SA.)
 
 **2.2 Per-env values** (already set for drroc4 — verify):
-- `gitops/drroc4-common-values.yaml`: `clusterId: drroc4`, `storageClass: isilon`,
+- `gitops/envs/drroc4/common.yaml`: `clusterId: drroc4`, `storageClass: isilon`,
   `vault.host: vault.apps.drroc4.lac1.biz`.
-- `gitops/drroc4-values.yaml`: `instanceId: drgitopsapp`, `mongo.namespace: mongo-drgitops`,
+- `gitops/envs/drroc4/values.yaml`: `instanceId: drgitopsapp`, `mongo.namespace: mongo-drgitops`,
   `mongo.version: 6.0.12`, `jdbc.sslEnabled: false`, `dro.namespace: redhat-marketplace`,
   `sls.syncEnabled: true`.
 
@@ -210,7 +210,7 @@ Grafana route reachable.
 ## 9. The next cluster (the repeatable bit)
 
 Hub setup (§1) is done once. Per new cluster:
-1. `gitops/`: add `<env>-common-values.yaml` + `<env>-values.yaml`.
+1. `gitops/envs/<cluster>/`: copy `_example/` to `common.yaml` + `values.yaml`.
 2. `mas-config-repo/envs/<cluster>.env` (the ~6 values that differ).
 3. `./bootstrap/apply.sh <env>` → Vault init/auth/load (§4–§5) → render+commit config (§6) → gates (§7).
 
