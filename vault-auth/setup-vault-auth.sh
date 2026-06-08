@@ -19,7 +19,7 @@ VAULT_SA="${VAULT_SA:-vault}"                 # the Vault server ServiceAccount 
 VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-http://127.0.0.1:8200}"
 VAULT_ROLE="${VAULT_ROLE:-mas-gitops}"
 VAULT_POLICY="${VAULT_POLICY:-mas-gitops}"
-REPO_SA="${REPO_SA:-default}"                 # the repo-server SA AVP logs in as
+REPO_SA="${REPO_SA:-openshift-gitops-argocd-repo-server}"   # the SA AVP logs in as (stock OpenShift GitOps)
 ROLE_TTL="${ROLE_TTL:-1h}"
 STATIC_REVIEWER_JWT="${STATIC_REVIEWER_JWT:-0}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }

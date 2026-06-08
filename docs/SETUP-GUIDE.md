@@ -39,7 +39,7 @@ cp bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.example.yaml \
 $EDITOR bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml      # real URL + token
 ```
 Everything else day-0 — CA trust, RBAC, the `mas` AppProject, and the **full AVP enablement**
-(CMP plugin, Vault credentials, token-review RBAC, and the repo-server sidecar patch) — lives in
+(CMP plugin, Vault credentials, and the repo-server sidecar patch; the Vault reviewer grant is done by setup-vault-auth.sh) — lives in
 `bootstrap/` and is applied for you by `apply.sh` in §3. There is no separate AVP step and no
 `argocd/` folder anymore. AVP can't reach Vault until §4–§5; the secret-consuming Applications
 retry until then.
@@ -80,7 +80,7 @@ git add -A && git commit -m "drroc4 platform config" && git push
 ```bash
 ./bootstrap/apply.sh drroc4
 ```
-This applies `00-prereqs/` (CA, RBAC, the `mas` AppProject, repo creds, and all AVP resources),
+This applies `00-prereqs/` (CA, RBAC, the `mas` AppProject, repo creds, AVP creds + CMP plugin),
 patches the repo-server with the AVP sidecar and restarts it, then renders `gitops/` and applies
 it — seeding the self-managing root `platform-drroc4`. ArgoCD now owns everything
 and begins syncing by sync-wave:
