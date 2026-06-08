@@ -28,7 +28,7 @@ scripts/, vault-auth/, docs/
 ```
 bootstrap/apply.sh <env>
   -> 00-prereqs (AppProject + creds + CA + RBAC)
-  -> helm template gitops --show-only seed-application.yaml | oc apply   (applies ONLY the seed)
+  -> helm template gitops --set seedOnly=true | oc apply   (applies ONLY the seed)
 platform-<env>  (now ArgoCD-managed, self-heals)
   -> renders gitops/ -> GENERATES all 9 child Applications, sync-wave ordered:
      -20 root | -10 AVP | 10 Vault | 20 Mongo operator(Helm) | 25 Mongo CR | 28 mongo->Vault gate

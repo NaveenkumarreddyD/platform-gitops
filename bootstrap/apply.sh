@@ -23,7 +23,7 @@ helm template platform "$ROOT/gitops" \
   -f "$ROOT/gitops/common-values.yaml" \
   -f "$ROOT/gitops/envs/${ENV}/common.yaml" \
   -f "$ROOT/gitops/envs/${ENV}/values.yaml" \
-  --show-only gitops/templates/seed-application.yaml | oc apply -f -
+  --set seedOnly=true | oc apply -f -
 
 echo ">> 4/4 done. The seed (platform-$ENV) now generates + self-heals everything."
 echo "   Next (one-time): init/unseal Vault -> ./scripts/setup-vault-auth.sh -> ./scripts/load-secrets.sh"

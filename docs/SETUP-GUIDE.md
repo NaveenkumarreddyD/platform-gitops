@@ -82,7 +82,7 @@ git add -A && git commit -m "drroc4 platform config" && git push
 ```
 This applies `00-prereqs/` (CA, RBAC, the `mas` AppProject, repo creds, AVP creds + CMP plugin),
 patches the repo-server with the AVP sidecar and restarts it, then applies **only the seed**
-(`platform-drroc4`) via `--show-only`. ArgoCD syncs the seed, which **generates** the 9 child
+(`platform-drroc4`) via `--set seedOnly=true`. ArgoCD syncs the seed, which **generates** the 9 child
 Applications and self-heals. Sync-wave order:
 
 ```

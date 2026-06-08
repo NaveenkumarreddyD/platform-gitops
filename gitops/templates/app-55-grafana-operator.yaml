@@ -1,5 +1,5 @@
 # wave 55 — grafana-operator (OLM, pinned v5.21.2 for OCP < 4.19)
-{{- if .Values.enable.grafana }}
+{{- if and (not .Values.seedOnly) .Values.enable.grafana }}
 ---
 # community grafana-operator (OLM) pinned to v5.21.2 (v5.22.x CRD breaks on OCP < 4.19)
 apiVersion: argoproj.io/v1alpha1

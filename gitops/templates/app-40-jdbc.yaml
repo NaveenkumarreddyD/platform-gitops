@@ -1,5 +1,5 @@
 # wave 40 — JDBC config (local chart via AVP plugin)
-{{- if .Values.enable.jdbc }}
+{{- if and (not .Values.seedOnly) .Values.enable.jdbc }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

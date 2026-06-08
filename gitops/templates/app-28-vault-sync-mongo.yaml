@@ -1,5 +1,5 @@
 # wave 28 — mongo->Vault CA gate (local chart)
-{{- if and .Values.enable.registrationSync .Values.enable.mongodb }}
+{{- if and (not .Values.seedOnly) .Values.enable.registrationSync .Values.enable.mongodb }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

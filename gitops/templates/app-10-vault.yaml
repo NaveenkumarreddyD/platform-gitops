@@ -1,5 +1,5 @@
 # wave 10 — HashiCorp Vault server (upstream Helm chart, 3-node raft HA)
-{{- if .Values.enable.vault }}
+{{- if and (not .Values.seedOnly) .Values.enable.vault }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

@@ -1,4 +1,5 @@
 # ============ GLOBAL defaults (every env) ============
+seedOnly: false   # apply.sh sets =true to emit ONLY the seed; ArgoCD leaves it false -> renders all children
 project: mas
 argoNamespace: openshift-gitops
 

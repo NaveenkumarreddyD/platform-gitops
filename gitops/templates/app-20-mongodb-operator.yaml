@@ -1,5 +1,5 @@
 # wave 20 — MongoDB Community Operator (upstream Helm chart, IBM way)
-{{- if .Values.enable.mongodb }}
+{{- if and (not .Values.seedOnly) .Values.enable.mongodb }}
 ---
 # MongoDB Community Operator the IBM way: the operator's own Helm chart (creates the
 # mongodb-kubernetes-operator deployment), NOT OLM. Watches the dedicated mongo namespace.

@@ -1,5 +1,5 @@
 # wave 25 — dedicated MongoDBCommunity CR (local chart via AVP plugin)
-{{- if .Values.enable.mongodb }}
+{{- if and (not .Values.seedOnly) .Values.enable.mongodb }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application

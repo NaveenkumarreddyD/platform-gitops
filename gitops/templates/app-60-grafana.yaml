@@ -1,5 +1,5 @@
 # wave 60 — Grafana CR + Thanos datasource + dashboards (local chart)
-{{- if .Values.enable.grafana }}
+{{- if and (not .Values.seedOnly) .Values.enable.grafana }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
