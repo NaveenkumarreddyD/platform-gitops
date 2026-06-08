@@ -63,7 +63,11 @@ check_ca "$IP/mongo" ca.crt
 echo "== sls-mongo =="; check_creds "$IP/sls-mongo" username password; check_ca "$IP/sls-mongo" ca.crt
 echo "== jdbc-system =="; check_creds "$IP/jdbc-system" username password
 [[ -n "$(field "$IP/jdbc-system" jdbc_url)" ]] && ok "$IP/jdbc-system#jdbc_url" || no "$IP/jdbc-system#jdbc_url missing"
-check_ca "$IP/jdbc-system" ca.crt
+if [[ "${JDBC_SSL_ENABLED:-false}" =~ ^(1|true|yes)$ || "${JDBC_CA_REQUIRED:-false}" =~ ^(1|true|yes)$ ]]; then
+  check_ca "$IP/jdbc-system" ca.crt
+else
+  ok "$IP/jdbc-system#ca.crt not required (JDBC_SSL_ENABLED=false)"
+fi
 echo "== manage-crypto =="; check_creds "$IP/manage-crypto" cryptoKey cryptoxKey
 echo "== superuser =="; check_creds "$IP/superuser" username password
 

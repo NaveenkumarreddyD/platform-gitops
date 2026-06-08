@@ -1,4 +1,5 @@
 # wave 30 — IBM MAS account-root (IBM mirror; deploys Suite/Manage from mas-config-repo)
+# Default is manual sync: this is the gate after Vault/Mongo/secrets are ready.
 {{- if and (not .Values.rootOnly) .Values.enable.accountRoot }}
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -6,8 +7,12 @@ kind: Application
 metadata:
   name: ibm-mas-account-root
   namespace: {{ .Values.argoNamespace }}
-  labels: { app.kubernetes.io/part-of: mas-platform }
-  annotations: { argocd.argoproj.io/sync-wave: "30" }
+  labels:
+    app.kubernetes.io/part-of: mas-platform
+    mas.ibm.com/manual-gate: prerequisites
+  annotations:
+    argocd.argoproj.io/sync-wave: "30"
+    mas.ibm.com/manual-sync-reason: "Sync only after Vault is initialized, secrets are loaded, and MongoDB is Running"
 spec:
   revisionHistoryLimit: 10
   project: {{ .Values.project }}
@@ -34,5 +39,8 @@ spec:
     retry:
       limit: 5
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+{{- else }}
+  # Intentionally no automated syncPolicy. An operator must manually sync this
+  # Application after the prerequisites and Vault preflight checks pass.
 {{- end }}
 {{- end }}

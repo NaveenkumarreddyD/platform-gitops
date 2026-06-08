@@ -16,7 +16,7 @@ storageClass `isilon`, Vault route `vault.apps.drroc4.lac1.biz`.
 
 ---
 
-## Quick path (greenfield drroc4) — 2 commands + 3 manual seams
+## Quick path (greenfield drroc4) — prerequisite gate before MAS
 
 Sections 0–8 are the detailed reference. For a clean cluster the whole bring-up is:
 
@@ -32,10 +32,19 @@ bash bootstrap/apply.sh drroc4                 # prereqs + AVP sidecar + root ap
 bash scripts/init-vault.sh
 export VAULT_TOKEN=<root_token_it_prints>
 
-# the rest in one command — Vault auth + load secrets + preflight + render config + commit/push:
+# load static prerequisite secrets and render/push MAS config.
+# MAS account-root is still manual after this command.
 bash scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
 
-# [seam 3] approve the Grafana 5.21.2 InstallPlan once (Manual pin for OCP 4.18):
+# wait until dedicated Mongo is Running and its CA is in Vault.
+oc wait application/vault-sync-mongo-drgitopsapp -n openshift-gitops \
+  --for=jsonpath='{.status.health.status}'=Healthy --timeout=30m
+./scripts/preflight-vault.sh ../mas-config-repo/envs/drroc4.env
+
+# [manual MAS gate] only now sync IBM account-root, which starts MAS Core/SLS/Manage generation:
+argocd app sync ibm-mas-account-root
+
+# approve the Grafana 5.21.2 InstallPlan once (Manual pin for OCP 4.18):
 oc get installplan -A | grep grafana
 oc patch installplan <name> -n <ns> --type merge -p '{"spec":{"approved":true}}'
 
@@ -45,8 +54,8 @@ oc get applications -n openshift-gitops -w     # watch it converge in wave order
 `deploy.sh` wraps `setup-vault-auth.sh` → `load-secrets.sh` → `preflight-vault.sh` → `render.py` → commit.
 The Mongo/SLS CA sync and SLS/DRO registration run automatically as **PostSync Jobs** once their
 dependencies are Ready — no manual harvest step in the happy path (§7 covers the manual fallbacks).
-The three seams above are the only genuinely-manual touches: a Git token, the Vault unseal keys, and
-one operator approval.
+The MAS `ibm-mas-account-root` Application is intentionally manual. Do not sync it until Vault
+contains entitlement, license, Mongo credentials/CA, SLS Mongo credentials/CA, and JDBC credentials.
 
 ---
 
@@ -121,11 +130,13 @@ Applications and self-heals. Sync-wave order:
 
 ```
 -20 platform-drroc4 (root)   -10 AVP config   10 Vault   20 Mongo operator (Helm)
- 25 Mongo CR   28 mongo→Vault gate   30 account-root   40 JDBC
+ 25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)   40 JDBC
  50 SLS/DRO sync   55 grafana-operator   60 Grafana
 ```
 Early waves (AVP, Vault) go first. The secret-consuming waves (Mongo CR 25, JDBC 40, …) will sit
 in `ComparisonError`/retry until Vault is initialized and loaded in §4–§5 — expected.
+`ibm-mas-account-root` is created by the root app but has no automated sync policy by default, so
+MAS Core/SLS/Manage do not start until you manually sync it.
 
 ```bash
 oc get applications -n openshift-gitops
@@ -171,14 +182,16 @@ After loading, restart the repo-server so ArgoCD re-renders with the now-present
 ```bash
 oc rollout restart deploy/openshift-gitops-repo-server -n openshift-gitops
 ```
-Mongo operator → Mongo CR → JDBC waves should now go Healthy.
+Mongo operator and Mongo CR should now go Healthy. Wait for `vault-sync-mongo-<instance>` to patch
+the Mongo CA into Vault before syncing IBM MAS account-root.
 
 ---
 
 ## 6. Deploy MAS config (render + commit `mas-config-repo`)
 
 `account-root` (wave 30) discovers each `mas/<cluster>/` directory in the config repo and deploys
-it. So you render + commit; ArgoCD does the rest.
+it after you manually sync `ibm-mas-account-root`. So you render + commit, wait for prerequisites,
+then sync account-root.
 
 **6.1 Fill `mas-config-repo/envs/drroc4.env`** — the `CHANGE_ME`s: `API_HOST`, `MAS_DOMAIN`,
 `SLS_MONGO_HOST`, DRO contact, etc. Channels/catalog are already pinned
@@ -192,6 +205,8 @@ python3 render.py drroc4
 git add -A && git commit -m "drroc4 MAS config" && git push
 cd ../platform-gitops
 oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+./scripts/preflight-vault.sh ../mas-config-repo/envs/drroc4.env
+argocd app sync ibm-mas-account-root
 ```
 
 > **Greenfield note (changed from the old Ansible-coexistence model):** this cluster was wiped,

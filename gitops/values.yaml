@@ -23,6 +23,8 @@ vault:
   replicas: 3
   host: vault.example.local                # OVERRIDE per env (env-common)
 
+# Keep IBM MAS account-root manual by default. Sync it only after Vault is initialized,
+# required secrets are loaded, and the dedicated MongoDB is Running.
 accountRoot: { autoSync: false, clusterAdminRole: true, applicationAdminRole: true }
 grafana: { namespace: grafana }
 operatorsNamespace: platform-operators
