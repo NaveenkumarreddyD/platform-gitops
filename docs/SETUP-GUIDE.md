@@ -16,6 +16,40 @@ storageClass `isilon`, Vault route `vault.apps.drroc4.lac1.biz`.
 
 ---
 
+## Quick path (greenfield drroc4) — 2 commands + 3 manual seams
+
+Sections 0–8 are the detailed reference. For a clean cluster the whole bring-up is:
+
+```bash
+cd platform-gitops
+# [seam 1] fill the GitLab group token:
+#   cp bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.example.yaml \
+#      bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml   (+ real url/token)
+
+bash bootstrap/apply.sh drroc4                 # prereqs + AVP sidecar + root app (generates 9 children)
+
+# [seam 2] init + unseal Vault (3-node raft) — one helper does all nodes, prints the token:
+bash scripts/init-vault.sh
+export VAULT_TOKEN=<root_token_it_prints>
+
+# the rest in one command — Vault auth + load secrets + preflight + render config + commit/push:
+bash scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
+
+# [seam 3] approve the Grafana 5.21.2 InstallPlan once (Manual pin for OCP 4.18):
+oc get installplan -A | grep grafana
+oc patch installplan <name> -n <ns> --type merge -p '{"spec":{"approved":true}}'
+
+oc get applications -n openshift-gitops -w     # watch it converge in wave order
+```
+
+`deploy.sh` wraps `setup-vault-auth.sh` → `load-secrets.sh` → `preflight-vault.sh` → `render.py` → commit.
+The Mongo/SLS CA sync and SLS/DRO registration run automatically as **PostSync Jobs** once their
+dependencies are Ready — no manual harvest step in the happy path (§7 covers the manual fallbacks).
+The three seams above are the only genuinely-manual touches: a Git token, the Vault unseal keys, and
+one operator approval.
+
+---
+
 ## 0. Prerequisites
 
 On your workstation: `oc` (logged in to drroc4 as cluster-admin), `helm` 3.x, `git`, `jq`, `openssl`.
@@ -61,8 +95,8 @@ already binds the correct `openshift-gitops-argocd-repo-server` SA.)
 - `gitops/envs/drroc4/common.yaml`: `clusterId: drroc4`, `storageClass: isilon`,
   `vault.host: vault.apps.drroc4.lac1.biz`.
 - `gitops/envs/drroc4/values.yaml`: `instanceId: drgitopsapp`, `mongo.namespace: mongo-drgitops`,
-  `mongo.version: 6.0.12`, `jdbc.sslEnabled: false`, `dro.namespace: redhat-marketplace`,
-  `sls.syncEnabled: true`.
+  `mongo.version: 6.0.12`, `jdbc.sslEnabled: false`, `dro.namespace: ibm-software-central`,
+  `dro.syncEnabled: false` (flip to true once DRO is Running there), `sls.syncEnabled: true`.
 
 **2.3 Air-gap check** (see Appendix B): the `hashicorp-vault-server` and
 `mongodb-community-operator` Applications pull upstream Helm charts. If drroc4 can't reach

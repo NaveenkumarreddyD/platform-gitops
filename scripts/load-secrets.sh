@@ -21,7 +21,7 @@ VAULT_NS="${VAULT_NS:-vault}"; VAULT_POD="${VAULT_POD:-vault-0}"; VADDR="${VADDR
 MONGO_HOST="${MONGO_HOST:-${INSTANCE_ID}-mongo-svc.${MONGO_NS:-mongo-${INSTANCE_ID}}.svc.cluster.local}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
 vrun(){ oc exec -n "$VAULT_NS" "$VAULT_POD" -- sh -c "export VAULT_ADDR=$VADDR VAULT_TOKEN='$VAULT_TOKEN'; $*"; }
-vget(){ vrun "vault kv get -field='$2' $KV/$1" 2>/dev/null || true; }
+vget(){ vrun "vault kv get -field='$2' $1" 2>/dev/null || true; }
 gen(){ openssl rand -base64 "${1:-24}" | tr -d '/+=' | cut -c1-"${2:-24}"; }
 genhex(){ openssl rand -hex "${1:-32}"; }
 putfile(){ oc cp "$1" "$VAULT_NS/$VAULT_POD:/tmp/$2"; }
@@ -55,8 +55,8 @@ else
 fi
 
 # Dedicated Mongo: write creds + host now; CA is patched in by sync-mongo-ca.sh after Mongo is Ready.
-vrun "vault kv patch $KV/$IPREFIX/mongo username='$MONGO_USERNAME' password='$MONGO_PASSWORD' host='$MONGO_HOST' 2>/dev/null || vault kv put $KV/$IPREFIX/mongo username='$MONGO_USERNAME' password='$MONGO_PASSWORD' host='$MONGO_HOST'"
-vrun "vault kv patch $KV/$IPREFIX/sls-mongo username='$SLS_MONGO_USERNAME' password='$SLS_MONGO_PASSWORD' 2>/dev/null || vault kv put $KV/$IPREFIX/sls-mongo username='$SLS_MONGO_USERNAME' password='$SLS_MONGO_PASSWORD'"
+vrun "vault kv patch $IPREFIX/mongo username='$MONGO_USERNAME' password='$MONGO_PASSWORD' host='$MONGO_HOST' 2>/dev/null || vault kv put $IPREFIX/mongo username='$MONGO_USERNAME' password='$MONGO_PASSWORD' host='$MONGO_HOST'"
+vrun "vault kv patch $IPREFIX/sls-mongo username='$SLS_MONGO_USERNAME' password='$SLS_MONGO_PASSWORD' 2>/dev/null || vault kv put $IPREFIX/sls-mongo username='$SLS_MONGO_USERNAME' password='$SLS_MONGO_PASSWORD'"
 
 echo ">> Loaded (generate-once values reused on re-run)."
 echo ">> JDBC: $( [[ -n "$JDBC_CA_CRT" ]] && echo 'TCPS (CA stored)' || echo 'non-SSL (no CA)' )"

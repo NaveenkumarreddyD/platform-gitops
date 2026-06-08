@@ -11,19 +11,17 @@ spec:
     - https://gitlab.lac1.biz/gitops/*
     - https://helm.releases.hashicorp.com        # Vault chart
     - https://mongodb.github.io/helm-charts       # MongoDB Community Operator chart
-  # DESTINATIONS — in-cluster ONLY (locks out cross-cluster deploys), scoped to the MAS/platform
-  # namespaces. If a MAS-created namespace ever falls outside these prefixes, add its pattern here
-  # (or temporarily widen to `namespace: '*'`, which still keeps the in-cluster server lock).
+  # DESTINATIONS — in-cluster ONLY. This server lock is the guardrail that matters for this topology:
+  # each ArgoCD manages exactly one cluster, so this prevents any cross-cluster deploy. Namespace is
+  # left open because IBM's account-root generates apps whose destinations can't be fully enumerated
+  # up front — e.g. cluster-scoped RBAC apps (application-admin-rbac) use namespace 'default'. Since
+  # the resource-kind whitelists below are already '*/*', per-namespace restriction adds little while
+  # reliably breaking the IBM-generated apps. To re-tighten to an explicit list after a clean install,
+  # enumerate the real set first:
+  #   oc get applications -n openshift-gitops \
+  #     -o jsonpath='{range .items[*]}{.spec.destination.namespace}{"\n"}{end}' | sort -u
   destinations:
-    - { server: https://kubernetes.default.svc, namespace: 'mas-*' }            # Core/Manage/SLS per instance
-    - { server: https://kubernetes.default.svc, namespace: 'mongo-*' }           # dedicated Mongo
-    - { server: https://kubernetes.default.svc, namespace: 'ibm-*' }             # ibm-common-services, ibm-sls, DRO, etc.
-    - { server: https://kubernetes.default.svc, namespace: 'cert-manager*' }     # cert-manager (+ -operator)
-    - { server: https://kubernetes.default.svc, namespace: 'openshift-*' }       # openshift-gitops (Apps live here), monitoring
-    - { server: https://kubernetes.default.svc, namespace: vault }
-    - { server: https://kubernetes.default.svc, namespace: platform-operators }
-    - { server: https://kubernetes.default.svc, namespace: grafana }
-    - { server: https://kubernetes.default.svc, namespace: redhat-marketplace }  # DRO subscription
+    - { server: https://kubernetes.default.svc, namespace: '*' }
   # RESOURCE KINDS — left open on purpose: MAS + its operators create a wide, hard-to-enumerate
   # set of cluster- and namespace-scoped kinds, and restricting these reliably blocks the install.
   # The real guardrails above (sources + in-cluster destinations) catch the dangerous mistakes.

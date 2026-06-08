@@ -1,0 +1,28 @@
+{{- /*
+OpenShift SCC fix. The MongoDB Community operator pod and the mongod pods run as a fixed
+non-root UID (2000). The default `restricted-v2` SCC forces the UID into the namespace's
+assigned range and rejects 2000, so admission fails. Bind both ServiceAccounts to the
+`nonroot-v2` SCC (least-privilege option that allows an arbitrary non-root UID) via the
+auto-generated `system:openshift:scc:nonroot-v2` ClusterRole. This is the declarative
+equivalent of `oc adm policy add-scc-to-user nonroot-v2 -z <sa> -n <ns>`, so it reproduces
+on every cluster instead of being a manual one-off. sync-wave "-10" applies it before the
+CR (and the operator selfHeals onto it). Subjects may not exist yet — RBAC allows that.
+*/ -}}
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mongodb-nonroot-v2-scc
+  namespace: "{{ .Values.namespace }}"
+  annotations:
+    argocd.argoproj.io/sync-wave: "-10"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:nonroot-v2
+subjects:
+  - kind: ServiceAccount
+    name: mongodb-kubernetes-operator
+    namespace: "{{ .Values.namespace }}"
+  - kind: ServiceAccount
+    name: mongodb-database
+    namespace: "{{ .Values.namespace }}"

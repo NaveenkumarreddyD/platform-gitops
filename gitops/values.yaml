@@ -45,5 +45,5 @@ clusterId: ""
 instanceId: ""
 mongo: { namespace: "", members: 3, version: "6.0.12", adminUser: admin }
 jdbc:  { sslEnabled: false }
-dro:   { namespace: redhat-marketplace }
+dro:   { namespace: ibm-software-central, syncEnabled: false }
 sls:   { syncEnabled: true }

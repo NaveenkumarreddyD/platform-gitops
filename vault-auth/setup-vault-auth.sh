@@ -19,7 +19,11 @@ VAULT_SA="${VAULT_SA:-vault}"                 # the Vault server ServiceAccount 
 VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-http://127.0.0.1:8200}"
 VAULT_ROLE="${VAULT_ROLE:-mas-gitops}"
 VAULT_POLICY="${VAULT_POLICY:-mas-gitops}"
-REPO_SA="${REPO_SA:-openshift-gitops-argocd-repo-server}"   # the SA AVP logs in as (stock OpenShift GitOps)
+# The SA AVP logs in as = whatever SA the repo-server pod actually runs as. This VARIES by
+# OpenShift GitOps version/config (commonly 'default'; sometimes 'openshift-gitops-argocd-repo-server').
+# Auto-detect it so the Vault role always binds the real SA. Override with REPO_SA=... if needed.
+REPO_SA="${REPO_SA:-$(oc get pods -n "$NS_GITOPS" -l app.kubernetes.io/name=openshift-gitops-repo-server -o jsonpath='{.items[0].spec.serviceAccountName}' 2>/dev/null)}"
+REPO_SA="${REPO_SA:-openshift-gitops-argocd-repo-server}"   # fallback if detection returns nothing
 ROLE_TTL="${ROLE_TTL:-1h}"
 STATIC_REVIEWER_JWT="${STATIC_REVIEWER_JWT:-0}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }

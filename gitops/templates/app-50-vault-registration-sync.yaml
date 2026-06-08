@@ -30,7 +30,7 @@ spec:
         ocImage: {{ .Values.images.oc }}
         vaultImage: {{ .Values.images.vault }}
         slsSync: { enabled: {{ .Values.sls.syncEnabled }}, namespace: {{ include "gitops.slsNs" . | quote }} }
-        droSync: { enabled: true, namespace: {{ .Values.dro.namespace }} }
+        droSync: { enabled: {{ .Values.dro.syncEnabled }}, namespace: {{ .Values.dro.namespace }} }
         mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
   syncPolicy:
     automated: { prune: true, selfHeal: true }
