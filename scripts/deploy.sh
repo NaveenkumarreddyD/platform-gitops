@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Per-instance deploy: load secrets -> preflight -> render config -> commit/push.
+# One-command deploy (render config + load secrets + preflight + commit): load secrets -> preflight -> render config -> commit/push.
 # Usage:  export VAULT_TOKEN=<root> (+ IBM_ENTITLEMENT_KEY/MAS_LICENSE_FILE/JDBC_* for load)
-#         ./scripts/deploy-instance.sh ../mas-config-repo/envs/drroc4.env
+#         ./scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 ENVFILE="${1:?usage: deploy-instance.sh <path/to/cluster.env>}"
 CONFIG_REPO="${CONFIG_REPO:-$(cd "$(dirname "$ENVFILE")/.." && pwd)}"
