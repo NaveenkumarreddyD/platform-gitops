@@ -125,12 +125,12 @@ git add -A && git commit -m "drroc4 platform config" && git push
 ```
 This applies `00-prereqs/` (CA, RBAC, the `mas` AppProject, repo creds, AVP creds + CMP plugin),
 patches the repo-server with the AVP sidecar and restarts it, then applies **only the root app**
-(`platform-drroc4`) via `--set rootOnly=true`. ArgoCD syncs the root app, which **generates** the 9 child
-Applications and self-heals. Sync-wave order:
+(`platform-drroc4`) via `--set rootOnly=true`. ArgoCD syncs the root app, which **generates** the child
+Applications plus prerequisite resources and self-heals them. Sync-wave order:
 
 ```
--20 platform-drroc4 (root)   -10 AVP config   10 Vault   20 Mongo operator (Helm)
- 25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)   40 JDBC
+-20 platform-drroc4 (root)   -10 AVP config   10 Vault   19 Mongo SCC prereq
+ 20 Mongo operator (Helm)   25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)   40 JDBC
  50 SLS/DRO sync   55 grafana-operator   60 Grafana
 ```
 Early waves (AVP, Vault) go first. The secret-consuming waves (Mongo CR 25, JDBC 40, …) will sit

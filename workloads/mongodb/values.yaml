@@ -13,5 +13,6 @@ resources:
   limits:   { cpu: "1",    memory: "1Gi" }
 adminUser: admin
 slsmongoUser: slsmongo
+createSccBinding: false          # platform root owns this before the operator app starts
 adminPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/mongo#password>"
 slsmongoPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/sls-mongo#password>"

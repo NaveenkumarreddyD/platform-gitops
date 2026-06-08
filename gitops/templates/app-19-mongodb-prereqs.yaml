@@ -1,0 +1,33 @@
+# wave 19 — namespace + OpenShift SCC binding required before the MongoDB operator pod starts.
+{{- if and (not .Values.rootOnly) .Values.enable.mongodb }}
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ include "gitops.mongoNs" . }}
+  labels:
+    app.kubernetes.io/part-of: mas-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: mongodb-nonroot-v2-scc
+  namespace: {{ include "gitops.mongoNs" . }}
+  labels:
+    app.kubernetes.io/part-of: mas-platform
+  annotations:
+    argocd.argoproj.io/sync-wave: "19"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:nonroot-v2
+subjects:
+  - kind: ServiceAccount
+    name: mongodb-kubernetes-operator
+    namespace: {{ include "gitops.mongoNs" . }}
+  - kind: ServiceAccount
+    name: mongodb-database
+    namespace: {{ include "gitops.mongoNs" . }}
+{{- end }}

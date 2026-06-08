@@ -31,7 +31,7 @@ bootstrap/apply.sh <env>
   -> helm template gitops --set rootOnly=true | oc apply   (applies ONLY the root app)
 platform-<env>  (now ArgoCD-managed, self-heals)
   -> renders gitops/ -> GENERATES all 9 child Applications, sync-wave ordered:
-     -20 root | -10 AVP | 10 Vault | 20 Mongo operator(Helm) | 25 Mongo CR | 28 mongo->Vault gate
+     -20 root | -10 AVP | 10 Vault | 19 Mongo SCC prereq | 20 Mongo operator(Helm) | 25 Mongo CR | 28 mongo->Vault gate
      30 account-root (manual gate for Core/Manage) | 40 JDBC | 50 SLS/DRO sync | 55 grafana-operator | 60 Grafana
 ```
 
