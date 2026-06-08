@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# One-command post-Vault deploy: configure Vault auth -> load secrets -> preflight -> render config -> commit/push.
+# One-command post-Vault deploy: configure Vault auth -> load static secrets -> static preflight
+# -> render config -> commit/push. It deliberately does NOT sync IBM MAS account-root.
 # Usage:  export VAULT_TOKEN=<root> (+ IBM_ENTITLEMENT_KEY/MAS_LICENSE_FILE/JDBC_* for load)
 #         ./scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
@@ -13,7 +14,8 @@ say(){ printf '\n=== %s ===\n' "$*"; }
 say "1/5 Configure Vault auth (k8s auth + reader/writer roles; auto-detects repo-server SA)"
 ./scripts/setup-vault-auth.sh
 say "2/5 Load secrets into Vault";  ./scripts/load-secrets.sh "$ENVFILE"
-say "3/5 Preflight (CA WARNs are normal pre-sync)"; ./scripts/preflight-vault.sh "$ENVFILE" || true
+say "3/5 Static preflight (Mongo CA is deferred until MongoDB is Running)"
+./scripts/preflight-vault.sh --phase static "$ENVFILE"
 say "4/5 Render config (shared-cluster files auto-skipped)"
 ( cd "$CONFIG_REPO" && python3 render.py "$CLUSTER" )
 say "5/5 Commit + push config"
@@ -21,7 +23,7 @@ say "5/5 Commit + push config"
 read -r -p "Commit and push the above to the config repo? [y/N] " a
 if [[ "$a" == y ]]; then
   ( cd "$CONFIG_REPO" && git commit -m "deploy: $CLUSTER" && git push )
-  echo ">> pushed. account-root picks it up. Mongo/SLS/DRO CA registration is automated by the PostSync Jobs."
+  echo ">> pushed. Next: run ./scripts/prepare-prereqs.sh $ENVFILE"
 else
-  echo ">> skipped push. Review, then commit/push manually."
+  echo ">> skipped push. Review, commit/push manually, then run ./scripts/prepare-prereqs.sh $ENVFILE"
 fi

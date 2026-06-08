@@ -1,4 +1,5 @@
-# wave 50 — SLS/DRO registration sync (local chart)
+# wave 50 — SLS/DRO registration sync (local chart). Manual by default because SLS is created
+# only after the manual ibm-mas-account-root sync.
 {{- if and (not .Values.rootOnly) .Values.enable.registrationSync }}
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -32,9 +33,14 @@ spec:
         slsSync: { enabled: {{ .Values.sls.syncEnabled }}, namespace: {{ include "gitops.slsNs" . | quote }} }
         droSync: { enabled: {{ .Values.dro.syncEnabled }}, namespace: {{ .Values.dro.namespace }} }
         mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
+{{- if .Values.registrationSync.autoSync }}
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     retry:
       limit: 5
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+{{- else }}
+  # Intentionally no automated syncPolicy. Run scripts/sync-runtime-registration.sh
+  # after SLS is initialized.
+{{- end }}
 {{- end }}

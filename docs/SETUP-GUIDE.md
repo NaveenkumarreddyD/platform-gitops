@@ -36,13 +36,14 @@ export VAULT_TOKEN=<root_token_it_prints>
 # MAS account-root is still manual after this command.
 bash scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
 
-# wait until dedicated Mongo is Running and its CA is in Vault.
-oc wait application/vault-sync-mongo-drgitopsapp -n openshift-gitops \
-  --for=jsonpath='{.status.health.status}'=Healthy --timeout=30m
-./scripts/preflight-vault.sh ../mas-config-repo/envs/drroc4.env
+# drive Mongo prerequisite apps, wait for Mongo Running, publish Mongo CA, run full preflight.
+bash scripts/prepare-prereqs.sh ../mas-config-repo/envs/drroc4.env
 
 # [manual MAS gate] only now sync IBM account-root, which starts MAS Core/SLS/Manage generation:
-argocd app sync ibm-mas-account-root
+bash scripts/sync-mas-account-root.sh ../mas-config-repo/envs/drroc4.env
+
+# after SLS initializes, sync SLS/DRO runtime registration into Vault:
+bash scripts/sync-runtime-registration.sh ../mas-config-repo/envs/drroc4.env
 
 # approve the Grafana 5.21.2 InstallPlan once (Manual pin for OCP 4.18):
 oc get installplan -A | grep grafana
@@ -51,11 +52,11 @@ oc patch installplan <name> -n <ns> --type merge -p '{"spec":{"approved":true}}'
 oc get applications -n openshift-gitops -w     # watch it converge in wave order
 ```
 
-`deploy.sh` wraps `setup-vault-auth.sh` → `load-secrets.sh` → `preflight-vault.sh` → `render.py` → commit.
-The Mongo/SLS CA sync and SLS/DRO registration run automatically as **PostSync Jobs** once their
-dependencies are Ready — no manual harvest step in the happy path (§7 covers the manual fallbacks).
-The MAS `ibm-mas-account-root` Application is intentionally manual. Do not sync it until Vault
-contains entitlement, license, Mongo credentials/CA, SLS Mongo credentials/CA, and JDBC credentials.
+`deploy.sh` wraps `setup-vault-auth.sh` → `load-secrets.sh` → static `preflight-vault.sh` →
+`render.py` → commit. `prepare-prereqs.sh` then waits for MongoDB, publishes Mongo CA into Vault,
+and runs the full preflight. The MAS `ibm-mas-account-root` Application is intentionally manual.
+Do not sync it until Vault contains entitlement, license, Mongo credentials/CA, SLS Mongo
+credentials/CA, and JDBC credentials.
 
 ---
 
@@ -131,12 +132,13 @@ Applications plus prerequisite resources and self-heals them. Sync-wave order:
 ```
 -20 platform-drroc4 (root)   -10 AVP config   10 Vault   19 Mongo SCC prereq
  20 Mongo operator (Helm)   25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)   40 JDBC
- 50 SLS/DRO sync   55 grafana-operator   60 Grafana
+ 50 SLS/DRO sync (manual after SLS exists)   55 grafana-operator   60 Grafana
 ```
 Early waves (AVP, Vault) go first. The secret-consuming waves (Mongo CR 25, JDBC 40, …) will sit
 in `ComparisonError`/retry until Vault is initialized and loaded in §4–§5 — expected.
 `ibm-mas-account-root` is created by the root app but has no automated sync policy by default, so
-MAS Core/SLS/Manage do not start until you manually sync it.
+MAS Core/SLS/Manage do not start until you manually sync it. `vault-registration-sync-*` is also
+manual by default; sync it after SLS initializes.
 
 ```bash
 oc get applications -n openshift-gitops
@@ -178,12 +180,11 @@ export IBM_ENTITLEMENT_KEY='...'           \
 ./scripts/preflight-vault.sh ../mas-config-repo/envs/drroc4.env    # sls CA WARN is normal pre-sync
 ```
 
-After loading, restart the repo-server so ArgoCD re-renders with the now-present secrets:
+After loading, let `prepare-prereqs.sh` restart the repo-server, sync/refresh the Mongo prerequisite
+Applications, wait for MongoDB to become Running, and publish the Mongo CA:
 ```bash
-oc rollout restart deploy/openshift-gitops-repo-server -n openshift-gitops
+bash scripts/prepare-prereqs.sh ../mas-config-repo/envs/drroc4.env
 ```
-Mongo operator and Mongo CR should now go Healthy. Wait for `vault-sync-mongo-<instance>` to patch
-the Mongo CA into Vault before syncing IBM MAS account-root.
 
 ---
 
@@ -205,8 +206,8 @@ python3 render.py drroc4
 git add -A && git commit -m "drroc4 MAS config" && git push
 cd ../platform-gitops
 oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
-./scripts/preflight-vault.sh ../mas-config-repo/envs/drroc4.env
-argocd app sync ibm-mas-account-root
+./scripts/preflight-vault.sh --phase full ../mas-config-repo/envs/drroc4.env
+./scripts/sync-mas-account-root.sh ../mas-config-repo/envs/drroc4.env
 ```
 
 > **Greenfield note (changed from the old Ansible-coexistence model):** this cluster was wiped,
@@ -216,9 +217,9 @@ argocd app sync ibm-mas-account-root
 
 ---
 
-## 7. Mid-flow gates (run as each dependency becomes Ready)
+## 7. Runtime gates after account-root
 
-**7.1 Mongo CA → Vault** (after the dedicated Mongo is Ready)
+**7.1 Mongo CA → Vault** is handled before account-root by `prepare-prereqs.sh`. Manual fallback:
 ```bash
 oc get mongodbcommunity -n mongo-drgitops          # wait for Phase: Running
 export VAULT_TOKEN='<vault admin>'
@@ -232,11 +233,9 @@ oc patch installplan <the-v5.21.2-plan> -n platform-operators --type merge -p '{
 # Do NOT approve any v5.22.x plan until the cluster is on OCP >= 4.19.
 ```
 
-**7.3 SLS registration harvest** (own-SLS only; after `LicenseService` is Ready)
+**7.3 SLS/DRO registration sync** (after `LicenseService` is Ready)
 ```bash
-./scripts/harvest-sls-registration.sh ../mas-config-repo/envs/drroc4.env   # writes sls#registration_key/url/ca
-oc rollout restart deploy/openshift-gitops-repo-server -n openshift-gitops
-oc annotate application drgitopsapp-sls-system -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
+./scripts/sync-runtime-registration.sh ../mas-config-repo/envs/drroc4.env
 ```
 If you point at a centralized/licensed SLS instead, load that SLS's `registration_key/url/ca` into
 `secret/mas/drroc4/drgitopsapp/sls` and skip this harvest step.

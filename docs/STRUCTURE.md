@@ -32,12 +32,14 @@ bootstrap/apply.sh <env>
 platform-<env>  (now ArgoCD-managed, self-heals)
   -> renders gitops/ -> GENERATES all 9 child Applications, sync-wave ordered:
      -20 root | -10 AVP | 10 Vault | 19 Mongo SCC prereq | 20 Mongo operator(Helm) | 25 Mongo CR | 28 mongo->Vault gate
-     30 account-root (manual gate for Core/Manage) | 40 JDBC | 50 SLS/DRO sync | 55 grafana-operator | 60 Grafana
+     30 account-root (manual gate for Core/Manage) | 40 JDBC | 50 SLS/DRO sync (manual after SLS exists) | 55 grafana-operator | 60 Grafana
 ```
 
 `ibm-mas-account-root` is intentionally generated without an automated sync policy by default.
 Sync it manually only after Vault is initialized, MongoDB is Running, and the Vault preflight for
 entitlement, license, Mongo credentials/CA, and JDBC passes.
+`vault-registration-sync-<instance>` is also manual by default so its SLS/DRO PostSync jobs do not
+time out before account-root creates SLS.
 
 ## Add a cluster/env
 1. `gitops/envs/<cluster>/`: copy `envs/_example/` -> `common.yaml` (clusterId, storageClass, vault.host) + `values.yaml` (instanceId, mongo ns, jdbc, dro, sls).

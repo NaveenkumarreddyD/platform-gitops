@@ -6,12 +6,20 @@ set -uo pipefail
 # "missing Vault value" / "illegal base64" / escaped-CA failures up front
 # instead of one ArgoCD sync at a time.
 #
-# USAGE: ./preflight-vault.sh <cluster.env>
+# USAGE: ./preflight-vault.sh [--phase static|full] <cluster.env>
 #   e.g. ./preflight-vault.sh envs/drroc4.env
+#   static = before Mongo is Running; checks all static secrets, skips Mongo CA.
+#   full   = before syncing MAS account-root; requires Mongo and SLS-Mongo CA.
 # Runs `vault` inside the vault pod via oc exec.
 # Exit 0 = all green; non-zero = at least one problem (printed).
 # ---------------------------------------------------------------------------
-ENVFILE="${1:?usage: preflight-vault.sh <env file>}"
+PHASE="full"
+if [[ "${1:-}" == "--phase" ]]; then
+  PHASE="${2:?usage: preflight-vault.sh [--phase static|full] <env file>}"
+  shift 2
+fi
+case "$PHASE" in static|full) ;; *) echo "ERROR: phase must be static or full" >&2; exit 2 ;; esac
+ENVFILE="${1:?usage: preflight-vault.sh [--phase static|full] <env file>}"
 # shellcheck disable=SC1090
 set -a; . "$ENVFILE"; set +a
 VAULT_NS="${VAULT_NS:-vault}"; VAULT_POD="${VAULT_POD:-vault-0}"
@@ -59,8 +67,17 @@ check_ca(){ # path field
 
 echo "== mongo =="; check_creds "$IP/mongo" username password
 [[ -n "$(field "$IP/mongo" host)" ]] && ok "$IP/mongo#host" || no "$IP/mongo#host missing"
-check_ca "$IP/mongo" ca.crt
-echo "== sls-mongo =="; check_creds "$IP/sls-mongo" username password; check_ca "$IP/sls-mongo" ca.crt
+if [[ "$PHASE" == "full" ]]; then
+  check_ca "$IP/mongo" ca.crt
+else
+  ok "$IP/mongo#ca.crt deferred until MongoDB is Running"
+fi
+echo "== sls-mongo =="; check_creds "$IP/sls-mongo" username password
+if [[ "$PHASE" == "full" ]]; then
+  check_ca "$IP/sls-mongo" ca.crt
+else
+  ok "$IP/sls-mongo#ca.crt deferred until MongoDB is Running"
+fi
 echo "== jdbc-system =="; check_creds "$IP/jdbc-system" username password
 [[ -n "$(field "$IP/jdbc-system" jdbc_url)" ]] && ok "$IP/jdbc-system#jdbc_url" || no "$IP/jdbc-system#jdbc_url missing"
 if [[ "${JDBC_SSL_ENABLED:-false}" =~ ^(1|true|yes)$ || "${JDBC_CA_REQUIRED:-false}" =~ ^(1|true|yes)$ ]]; then
@@ -79,6 +96,6 @@ else ok "$IP/sls#registration_key"; check_ca "$IP/sls" ca.crt
   [[ -n "$(field "$IP/sls" url)" ]] && ok "$IP/sls#url" || no "$IP/sls#url missing"; fi
 
 echo
-[[ $fail -eq 0 ]] && echo "PREFLIGHT: all required secrets present & well-formed." \
+[[ $fail -eq 0 ]] && echo "PREFLIGHT($PHASE): required secrets present & well-formed." \
                   || echo "PREFLIGHT: problems above — fix before syncing account-root."
 exit $fail
