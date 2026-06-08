@@ -1,14 +1,16 @@
 # wave 40 — JDBC config (local chart via AVP plugin)
-{{- if and (not .Values.seedOnly) .Values.enable.jdbc }}
+{{- if and (not .Values.rootOnly) .Values.enable.jdbc }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: {{ .Values.instanceId }}-jdbc-system
   namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform }
   annotations: { argocd.argoproj.io/sync-wave: "40" }
   finalizers: [ resources-finalizer.argocd.argoproj.io ]
 spec:
+  revisionHistoryLimit: 10
   project: {{ .Values.project }}
   destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.coreNs" . }} }
   source:
@@ -29,4 +31,7 @@ spec:
             jdbc_ca_crt: "<path:{{ include "gitops.path" . }}/jdbc-system#ca.crt>"
   syncPolicy:
     automated: { prune: true, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
 {{- end }}

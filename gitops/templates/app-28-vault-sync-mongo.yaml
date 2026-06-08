@@ -1,14 +1,16 @@
 # wave 28 — mongo->Vault CA gate (local chart)
-{{- if and (not .Values.seedOnly) .Values.enable.registrationSync .Values.enable.mongodb }}
+{{- if and (not .Values.rootOnly) .Values.enable.registrationSync .Values.enable.mongodb }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: vault-sync-mongo-{{ .Values.instanceId }}
   namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform }
   annotations: { argocd.argoproj.io/sync-wave: "28" }
   finalizers: [ resources-finalizer.argocd.argoproj.io ]
 spec:
+  revisionHistoryLimit: 10
   project: {{ .Values.project }}
   destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.argoNamespace }} }
   source:
@@ -32,4 +34,7 @@ spec:
         mongoSync: { enabled: true, namespace: {{ include "gitops.mongoNs" . }} }
   syncPolicy:
     automated: { prune: true, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
 {{- end }}

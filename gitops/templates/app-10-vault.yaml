@@ -1,13 +1,15 @@
 # wave 10 — HashiCorp Vault server (upstream Helm chart, 3-node raft HA)
-{{- if and (not .Values.seedOnly) .Values.enable.vault }}
+{{- if and (not .Values.rootOnly) .Values.enable.vault }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: hashicorp-vault-server
   namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform }
   annotations: { argocd.argoproj.io/sync-wave: "10" }
 spec:
+  revisionHistoryLimit: 10
   project: {{ .Values.project }}
   source:
     repoURL: https://helm.releases.hashicorp.com
@@ -46,5 +48,8 @@ spec:
   destination: { server: https://kubernetes.default.svc, namespace: vault }
   syncPolicy:
     automated: { prune: false, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
     syncOptions: [ "CreateNamespace=true" ]
 {{- end }}

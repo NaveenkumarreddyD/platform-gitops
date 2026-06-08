@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Day-0 seed — the ONLY thing you run by hand, ONCE per cluster.
+# Day-0 bootstrap — the ONLY thing you run by hand, ONCE per cluster.
 # Usage: ./bootstrap/apply.sh <nroc4|roc4|drroc4>
 ENV="${1:?usage: apply.sh <nroc4|roc4|drroc4>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -18,13 +18,12 @@ oc patch argocd "$NS" -n "$NS" --type merge \
 oc rollout restart deploy/openshift-gitops-repo-server -n "$NS"
 oc rollout status  deploy/openshift-gitops-repo-server -n "$NS" --timeout=180s || true
 
-echo ">> 3/4 app-of-apps: apply ONLY the seed; ArgoCD generates the 9 child Applications"
+echo ">> 3/4 app-of-apps: apply ONLY the root app; ArgoCD generates the 9 child Applications"
 helm template platform "$ROOT/gitops" \
-  -f "$ROOT/gitops/common-values.yaml" \
   -f "$ROOT/gitops/envs/${ENV}/common.yaml" \
   -f "$ROOT/gitops/envs/${ENV}/values.yaml" \
-  --set seedOnly=true | oc apply -f -
+  --set rootOnly=true | oc apply -f -
 
-echo ">> 4/4 done. The seed (platform-$ENV) now generates + self-heals everything."
+echo ">> 4/4 done. The root app (platform-$ENV) now generates + self-heals everything."
 echo "   Next (one-time): init/unseal Vault -> ./scripts/setup-vault-auth.sh -> ./scripts/load-secrets.sh"
 echo "   Watch: oc get applications -n $NS"

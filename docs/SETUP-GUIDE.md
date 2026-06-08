@@ -48,7 +48,7 @@ retry until then.
 
 ## 2. Configure platform-gitops (edit, commit, push — before bootstrap)
 
-**2.1 `gitops/common-values.yaml` — fix two known defaults:**
+**2.1 `gitops/values.yaml` — fix two known defaults:**
 - `generator.repo_url:` → your **actual** config repo. It currently reads
   `…/mas-gitops-config.git`; set it to `…/mas-config-repo.git` (or rename the repo to match).
   If these disagree, `account-root` globs an empty repo and no MAS config deploys.
@@ -75,14 +75,14 @@ git add -A && git commit -m "drroc4 platform config" && git push
 
 ---
 
-## 3. Bootstrap — seed the cluster (day-0, once)
+## 3. Bootstrap — apply the root app (day-0, once)
 
 ```bash
 ./bootstrap/apply.sh drroc4
 ```
 This applies `00-prereqs/` (CA, RBAC, the `mas` AppProject, repo creds, AVP creds + CMP plugin),
-patches the repo-server with the AVP sidecar and restarts it, then applies **only the seed**
-(`platform-drroc4`) via `--set seedOnly=true`. ArgoCD syncs the seed, which **generates** the 9 child
+patches the repo-server with the AVP sidecar and restarts it, then applies **only the root app**
+(`platform-drroc4`) via `--set rootOnly=true`. ArgoCD syncs the root app, which **generates** the 9 child
 Applications and self-heals. Sync-wave order:
 
 ```
@@ -221,7 +221,7 @@ status for you once the env file + secret material are in place.
 
 ## Appendix A — Vault on a separate VM (instead of in-cluster)
 
-Set in `gitops/common-values.yaml` (or per-env): `enable.vault: false`, keep `enable.avp: true`,
+Set in `gitops/values.yaml` (or per-env): `enable.vault: false`, keep `enable.avp: true`,
 and `vault.addr: https://vault.lac1.biz:8200`. Then choose an auth method:
 
 - **Kubernetes auth (recommended if the VM can reach the cluster API).** Smallest change — no repo

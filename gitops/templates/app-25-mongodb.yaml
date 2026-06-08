@@ -1,14 +1,16 @@
 # wave 25 — dedicated MongoDBCommunity CR (local chart via AVP plugin)
-{{- if and (not .Values.seedOnly) .Values.enable.mongodb }}
+{{- if and (not .Values.rootOnly) .Values.enable.mongodb }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: mongodb-ce-{{ .Values.instanceId }}
   namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform }
   annotations: { argocd.argoproj.io/sync-wave: "25" }
   finalizers: [ resources-finalizer.argocd.argoproj.io ]
 spec:
+  revisionHistoryLimit: 10
   project: {{ .Values.project }}
   destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.mongoNs" . }} }
   source:
@@ -30,5 +32,8 @@ spec:
             slsmongoPasswordPath: "<path:{{ include "gitops.path" . }}/sls-mongo#password>"
   syncPolicy:
     automated: { prune: true, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
     syncOptions: [ "CreateNamespace=true" ]
 {{- end }}

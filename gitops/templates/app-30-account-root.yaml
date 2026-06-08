@@ -1,13 +1,15 @@
 # wave 30 — IBM MAS account-root (IBM mirror; deploys Suite/Manage from mas-config-repo)
-{{- if and (not .Values.seedOnly) .Values.enable.accountRoot }}
+{{- if and (not .Values.rootOnly) .Values.enable.accountRoot }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
   name: ibm-mas-account-root
   namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform }
   annotations: { argocd.argoproj.io/sync-wave: "30" }
 spec:
+  revisionHistoryLimit: 10
   project: {{ .Values.project }}
   destination: { namespace: {{ .Values.argoNamespace }}, server: https://kubernetes.default.svc }
   source:
@@ -29,5 +31,8 @@ spec:
 {{- if .Values.accountRoot.autoSync }}
   syncPolicy:
     automated: { prune: false, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
 {{- end }}
 {{- end }}
