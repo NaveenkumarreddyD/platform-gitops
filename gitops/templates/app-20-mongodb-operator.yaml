@@ -1,0 +1,28 @@
+# wave 20 — MongoDB Community Operator (upstream Helm chart, IBM way)
+{{- if .Values.enable.mongodb }}
+---
+# MongoDB Community Operator the IBM way: the operator's own Helm chart (creates the
+# mongodb-kubernetes-operator deployment), NOT OLM. Watches the dedicated mongo namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mongodb-community-operator-{{ .Values.instanceId }}
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "20" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.mongoNs" . }} }
+  source:
+    repoURL: {{ .Values.mongoOperator.repo }}
+    chart: {{ .Values.mongoOperator.chart }}
+    targetRevision: {{ .Values.mongoOperator.version | quote }}
+    helm:
+      releaseName: mongodb-community-operator
+      values: |
+        community-operator-crds: { enabled: true }
+        operator: { watchNamespace: {{ include "gitops.mongoNs" . }} }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]
+{{- end }}

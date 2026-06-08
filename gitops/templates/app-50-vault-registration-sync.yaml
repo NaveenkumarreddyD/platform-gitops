@@ -1,0 +1,35 @@
+# wave 50 — SLS/DRO registration sync (local chart)
+{{- if .Values.enable.registrationSync }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-registration-sync-{{ .Values.instanceId }}
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "50" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.argoNamespace }} }
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/vault-sync
+    helm:
+      values: |
+        accountId: {{ .Values.account.id }}
+        clusterId: {{ .Values.clusterId }}
+        instanceId: {{ .Values.instanceId }}
+        vaultAddr: {{ .Values.vault.addr }}
+        vaultRole: {{ .Values.vault.writerRole }}
+        namespace: {{ .Values.argoNamespace }}
+        serviceAccount: vault-registration-sync
+        deployShared: false
+        ocImage: {{ .Values.images.oc }}
+        vaultImage: {{ .Values.images.vault }}
+        slsSync: { enabled: {{ .Values.sls.syncEnabled }}, namespace: {{ include "gitops.slsNs" . | quote }} }
+        droSync: { enabled: true, namespace: {{ .Values.dro.namespace }} }
+        mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+{{- end }}

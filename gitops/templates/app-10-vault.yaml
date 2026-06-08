@@ -1,0 +1,50 @@
+# wave 10 — HashiCorp Vault server (upstream Helm chart, 3-node raft HA)
+{{- if .Values.enable.vault }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: hashicorp-vault-server
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "10" }
+spec:
+  project: {{ .Values.project }}
+  source:
+    repoURL: https://helm.releases.hashicorp.com
+    chart: vault
+    targetRevision: {{ .Values.vault.chartVersion | quote }}
+    helm:
+      releaseName: vault
+      values: |
+        global: { openshift: true, enabled: true }
+        injector: { enabled: false }
+        server:
+          enabled: true
+          image: { repository: {{ .Values.vault.imageRepository }}, tag: {{ .Values.vault.imageTag | quote }} }
+          route: { enabled: true, host: {{ .Values.vault.host }}, tls: { termination: edge } }
+          dataStorage:  { enabled: true, size: {{ .Values.vault.dataSize }},  storageClass: {{ .Values.storageClass }}, accessMode: ReadWriteOnce }
+          auditStorage: { enabled: true, size: {{ .Values.vault.auditSize }}, storageClass: {{ .Values.storageClass }}, accessMode: ReadWriteOnce }
+          ha:
+            enabled: true
+            replicas: {{ .Values.vault.replicas }}
+            raft:
+              enabled: true
+              setNodeId: true
+              config: |
+                ui = true
+                listener "tcp" { address = "[::]:8200"  cluster_address = "[::]:8201"  tls_disable = 1 }
+                storage "raft" {
+                  path = "/vault/data"
+                  retry_join { leader_api_addr = "http://vault-0.vault-internal:8200" }
+                  retry_join { leader_api_addr = "http://vault-1.vault-internal:8200" }
+                  retry_join { leader_api_addr = "http://vault-2.vault-internal:8200" }
+                }
+                service_registration "kubernetes" {}
+          readinessProbe: { enabled: true, path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204" }
+          livenessProbe: { enabled: false }
+        ui: { enabled: true, serviceType: ClusterIP }
+  destination: { server: https://kubernetes.default.svc, namespace: vault }
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true" ]
+{{- end }}

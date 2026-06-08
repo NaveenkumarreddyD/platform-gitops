@@ -1,0 +1,32 @@
+# wave 40 — JDBC config (local chart via AVP plugin)
+{{- if .Values.enable.jdbc }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: {{ .Values.instanceId }}-jdbc-system
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "40" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.coreNs" . }} }
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/jdbc
+    plugin:
+      name: argocd-vault-plugin-helm
+      env:
+        - name: HELM_VALUES
+          value: |
+            instance_id: {{ .Values.instanceId }}
+            mas_config_name: {{ .Values.instanceId }}-jdbc-system
+            jdbc_ssl_enabled: {{ .Values.jdbc.sslEnabled }}
+            jdbc_url: "<path:{{ include "gitops.path" . }}/jdbc-system#jdbc_url>"
+            jdbc_username: "<path:{{ include "gitops.path" . }}/jdbc-system#username>"
+            jdbc_password: "<path:{{ include "gitops.path" . }}/jdbc-system#password>"
+            jdbc_ca_crt: "<path:{{ include "gitops.path" . }}/jdbc-system#ca.crt>"
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+{{- end }}

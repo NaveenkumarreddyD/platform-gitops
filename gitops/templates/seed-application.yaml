@@ -1,0 +1,25 @@
+# SEED (app-of-apps root). bootstrap/apply.sh applies ONLY this; ArgoCD renders the rest.
+{{- /* self-managing root: ArgoCD owns the generator, so editing gitops/<env>-*.yaml + commit
+       re-renders every Application below (and this root). Seeded once by bootstrap/apply.sh. */ -}}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: platform-{{ .Values.clusterId }}
+  namespace: {{ .Values.argoNamespace }}
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+  annotations: { argocd.argoproj.io/sync-wave: "-20" }
+spec:
+  project: {{ .Values.project }}
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: gitops
+    helm:
+      valueFiles:
+        - common-values.yaml
+        - {{ .Values.clusterId }}-common-values.yaml
+        - {{ .Values.clusterId }}-values.yaml
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.argoNamespace }} }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

@@ -81,9 +81,9 @@ git add -A && git commit -m "drroc4 platform config" && git push
 ./bootstrap/apply.sh drroc4
 ```
 This applies `00-prereqs/` (CA, RBAC, the `mas` AppProject, repo creds, AVP creds + CMP plugin),
-patches the repo-server with the AVP sidecar and restarts it, then renders `gitops/` and applies
-it — seeding the self-managing root `platform-drroc4`. ArgoCD now owns everything
-and begins syncing by sync-wave:
+patches the repo-server with the AVP sidecar and restarts it, then applies **only the seed**
+(`platform-drroc4`) via `--show-only`. ArgoCD syncs the seed, which **generates** the 9 child
+Applications and self-heals. Sync-wave order:
 
 ```
 -20 platform-drroc4 (root)   -10 AVP config   10 Vault   20 Mongo operator (Helm)

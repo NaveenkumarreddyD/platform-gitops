@@ -1,0 +1,35 @@
+# wave 28 — mongo->Vault CA gate (local chart)
+{{- if and .Values.enable.registrationSync .Values.enable.mongodb }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-sync-mongo-{{ .Values.instanceId }}
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "28" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.argoNamespace }} }
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/vault-sync
+    helm:
+      values: |
+        accountId: {{ .Values.account.id }}
+        clusterId: {{ .Values.clusterId }}
+        instanceId: {{ .Values.instanceId }}
+        vaultAddr: {{ .Values.vault.addr }}
+        vaultRole: {{ .Values.vault.writerRole }}
+        namespace: {{ .Values.argoNamespace }}
+        serviceAccount: vault-registration-sync
+        deployShared: true
+        ocImage: {{ .Values.images.oc }}
+        vaultImage: {{ .Values.images.vault }}
+        slsSync: { enabled: false }
+        droSync: { enabled: false, namespace: {{ .Values.dro.namespace }} }
+        mongoSync: { enabled: true, namespace: {{ include "gitops.mongoNs" . }} }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+{{- end }}

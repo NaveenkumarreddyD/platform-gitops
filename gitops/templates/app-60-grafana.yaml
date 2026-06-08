@@ -1,0 +1,23 @@
+# wave 60 — Grafana CR + Thanos datasource + dashboards (local chart)
+{{- if .Values.enable.grafana }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-{{ .Values.clusterId }}
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "60" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.grafana.namespace }} }
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/grafana
+    helm:
+      valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true" ]
+{{- end }}

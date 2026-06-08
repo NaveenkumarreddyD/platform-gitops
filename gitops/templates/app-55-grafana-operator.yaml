@@ -1,0 +1,24 @@
+# wave 55 — grafana-operator (OLM, pinned v5.21.2 for OCP < 4.19)
+{{- if .Values.enable.grafana }}
+---
+# community grafana-operator (OLM) pinned to v5.21.2 (v5.22.x CRD breaks on OCP < 4.19)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana-operator
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "55" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.operatorsNamespace }} }
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/operators
+    helm:
+      valueFiles: [ "common-values.yaml", "{{ .Values.clusterId }}-values.yaml" ]
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]
+{{- end }}

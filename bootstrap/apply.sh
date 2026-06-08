@@ -18,12 +18,13 @@ oc patch argocd "$NS" -n "$NS" --type merge \
 oc rollout restart deploy/openshift-gitops-repo-server -n "$NS"
 oc rollout status  deploy/openshift-gitops-repo-server -n "$NS" --timeout=180s || true
 
-echo ">> 3/4 seed the self-managing root + all Applications for $ENV"
+echo ">> 3/4 app-of-apps: apply ONLY the seed; ArgoCD generates the 9 child Applications"
 helm template platform "$ROOT/gitops" \
   -f "$ROOT/gitops/common-values.yaml" \
   -f "$ROOT/gitops/${ENV}-common-values.yaml" \
-  -f "$ROOT/gitops/${ENV}-values.yaml" | oc apply -f -
+  -f "$ROOT/gitops/${ENV}-values.yaml" \
+  --show-only gitops/templates/seed-application.yaml | oc apply -f -
 
-echo ">> 4/4 done. ArgoCD owns it now."
+echo ">> 4/4 done. The seed (platform-$ENV) now generates + self-heals everything."
 echo "   Next (one-time): init/unseal Vault -> ./scripts/setup-vault-auth.sh -> ./scripts/load-secrets.sh"
 echo "   Watch: oc get applications -n $NS"

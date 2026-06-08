@@ -1,0 +1,34 @@
+# wave 25 — dedicated MongoDBCommunity CR (local chart via AVP plugin)
+{{- if .Values.enable.mongodb }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mongodb-ce-{{ .Values.instanceId }}
+  namespace: {{ .Values.argoNamespace }}
+  annotations: { argocd.argoproj.io/sync-wave: "25" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  project: {{ .Values.project }}
+  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.mongoNs" . }} }
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/mongodb
+    plugin:
+      name: argocd-vault-plugin-helm
+      env:
+        - name: HELM_VALUES
+          value: |
+            namespace: {{ include "gitops.mongoNs" . }}
+            resource: {{ .Values.instanceId }}-mongo
+            members: {{ .Values.mongo.members }}
+            mongodbVersion: "{{ .Values.mongo.version }}"
+            storageClass: {{ .Values.storageClass }}
+            adminUser: {{ .Values.mongo.adminUser }}
+            adminPasswordPath: "<path:{{ include "gitops.path" . }}/mongo#password>"
+            slsmongoPasswordPath: "<path:{{ include "gitops.path" . }}/sls-mongo#password>"
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [ "CreateNamespace=true" ]
+{{- end }}
