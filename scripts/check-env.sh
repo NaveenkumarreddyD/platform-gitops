@@ -25,7 +25,7 @@ oc get applications.argoproj.io -n "$ARGO_NS" >/dev/null 2>&1 && ok "Argo CD App
 oc auth can-i patch applications.argoproj.io -n "$ARGO_NS" >/dev/null 2>&1 && ok "can patch Argo CD Applications" || no "need permission to patch Argo CD Applications in $ARGO_NS"
 
 echo "== config values =="
-for k in API_HOST MAS_DOMAIN MONGO_NS; do
+for k in CLUSTER_URL MAS_DOMAIN MONGO_NS; do
   v="${!k:-}"
   [[ -n "$v" && "$v" != CHANGE_ME* && "$v" != *CHANGE_ME* ]] && ok "$k=$v" || no "$k is unset or still CHANGE_ME"
 done

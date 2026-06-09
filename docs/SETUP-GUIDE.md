@@ -192,7 +192,7 @@ bash scripts/prepare-prereqs.sh ../mas-config-repo/envs/drroc4.env
 it after you manually sync `ibm-mas-account-root`. So you render + commit, wait for prerequisites,
 then sync account-root.
 
-**6.1 Fill `mas-config-repo/envs/drroc4.env`** — the `CHANGE_ME`s: `API_HOST`, `MAS_DOMAIN`,
+**6.1 Fill `mas-config-repo/envs/drroc4.env`** — the `CHANGE_ME`s: `CLUSTER_URL`, `MAS_DOMAIN`,
 `SLS_MONGO_HOST`, DRO contact, etc. Channels/catalog are already pinned
 (`MAS_CHANNEL=8.11.x`, `MAS_APP_CHANNEL=8.7.x`, `SLS_CHANNEL=3.x`, catalog `v9-240625-amd64`),
 and `SHARED_CLUSTER_SKIP=` is empty so cert-manager + DRO render (greenfield — see note below).
