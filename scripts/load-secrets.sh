@@ -43,7 +43,8 @@ SLS_MONGO_PASSWORD="${SLS_MONGO_PASSWORD:-$(vget "$IPREFIX/sls-mongo" password)}
 ENC="$(printf 'cp:%s' "$IBM_ENTITLEMENT_KEY" | base64 -w0)"
 DOCKERCFG="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' "$ENC" | base64 -w0)"
 vrun "vault kv put $PREFIX/entitlement image_pull_secret_b64='$DOCKERCFG'"
-vrun "vault kv put $IPREFIX/license license_id='$MAS_LICENSE_ID' license_file='$(base64 -w0 "$MAS_LICENSE_FILE")'"
+putfile "$MAS_LICENSE_FILE" mas-license.dat
+vrun "vault kv put $IPREFIX/license license_id='$MAS_LICENSE_ID' license_file=@/tmp/mas-license.dat; rm -f /tmp/mas-license.dat"
 vrun "vault kv put $IPREFIX/superuser username='$MAS_SUPERUSER_USERNAME' password='$MAS_SUPERUSER_PASSWORD'"
 vrun "vault kv put $IPREFIX/manage-crypto cryptoKey='$MANAGE_CRYPTO_KEY' cryptoxKey='$MANAGE_CRYPTOX_KEY'"
 

@@ -302,7 +302,7 @@ repos already.
 | AVP 403 ~a day after setup | expiring reviewer JWT | re-run durable `setup-vault-auth.sh` |
 | `ComparisonError: missing Vault value …#key` | secret absent / `put` overwrote it | `preflight-vault.sh`; restore via `update-vault-ca.sh` / `kv patch` |
 | Vault value changed but app stale | cache keyed by git revision | `rollout restart` repo-server + hard refresh |
-| `illegal base64 … byte 36` | raw entitlement stored | store base64 dockerconfigjson (loader does this) |
+| `license#license_file is base64-encoded` | license.dat was stored encoded | re-run `load-secrets.sh`; it stores raw license text |
 | CA error `InvalidByte(..,92)` | escaped `\n` PEM | re-store real multiline PEM via `update-vault-ca.sh` |
 | Grafana operator stuck Pending/Replacing | v5.22.x CRD on OCP < 4.19 | keep the v5.21.2 Manual pin; approve only the 5.21.2 InstallPlan |
 | No MAS config deploys | `generator.repo_url` ≠ real repo | fix the URL in `common-values.yaml`, re-sync account-root |

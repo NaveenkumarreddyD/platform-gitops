@@ -45,11 +45,15 @@ echo "== license =="
 v="$(field "$IP/license" license_file)"
 if [[ -z "$v" ]]; then no "license#license_file missing"
 else
-  dec="$(echo "$v" | base64 -d 2>/dev/null)"
-  if [[ -z "$dec" ]]; then no "license#license_file is not valid base64 (chart folds it into a single-line scalar -> MUST be base64 -w0)"
-  elif echo "$dec" | grep -qiE 'INCREMENT|FEATURE'; then ok "license#license_file (base64; contains INCREMENT/FEATURE -> real entitlement)"
-  elif echo "$dec" | grep -qiE 'SERVER|VENDOR'; then no "license#license_file decodes but has SERVER/VENDOR only, no INCREMENT/FEATURE -> this is an RLKS daemon config, not an entitlement bound to THIS SLS (license-binding issue)"
-  else no "license#license_file decodes but looks empty/wrong"; fi
+  if echo "$v" | grep -qiE 'INCREMENT|FEATURE'; then
+    ok "license#license_file (raw license text; contains INCREMENT/FEATURE)"
+  elif echo "$v" | grep -qiE 'SERVER|VENDOR'; then
+    no "license#license_file has SERVER/VENDOR but no INCREMENT/FEATURE -> check that this is the MAS/SLS entitlement license.dat"
+  elif echo "$v" | base64 -d 2>/dev/null | grep -qiE 'INCREMENT|FEATURE'; then
+    no "license#license_file is base64-encoded; store raw license.dat text instead"
+  else
+    no "license#license_file present but does not look like a license entitlement"
+  fi
 fi
 
 check_creds(){ # path u-field p-field
