@@ -14,7 +14,11 @@ DRO_SYNC_REQUIRED="${DRO_SYNC_REQUIRED:-true}"
 
 echo ">> waiting for LicenseService in $SLS_NS to initialize..."
 i=0
-until oc get licenseservice -n "$SLS_NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null | grep -qi true; do
+until {
+  initialized="$(oc get licenseservice -n "$SLS_NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
+  registration_key="$(oc get licenseservice -n "$SLS_NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
+  [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ]]
+}; do
   (( i += 15 ))
   [[ "$i" -ge 1800 ]] && { echo "ERROR: timeout waiting for SLS initialized"; oc get licenseservice -n "$SLS_NS" 2>/dev/null || true; exit 1; }
   sleep 15
