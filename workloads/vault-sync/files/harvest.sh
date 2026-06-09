@@ -21,7 +21,11 @@ if [ "$MODE" = "sls" ]; then
   NS="${SLS_NS:?}"
   echo ">> waiting for LicenseService Ready in $NS"
   i=0
-  until oc get licenseservice -n "$NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null | grep -qi true; do
+  until {
+    initialized="$(oc get licenseservice -n "$NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
+    registration_key="$(oc get licenseservice -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
+    [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ]]
+  }; do
     i=$((i+1)); [ "$i" -gt "$RETRIES" ] && { echo "timeout waiting for SLS Ready"; exit 1; }
     sleep "$INTERVAL"
   done
