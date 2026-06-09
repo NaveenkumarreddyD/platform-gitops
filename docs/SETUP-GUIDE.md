@@ -42,6 +42,9 @@ bash scripts/sync-mas-account-root.sh ../mas-config-repo/envs/drroc4.env
 # after SLS initializes, sync SLS/DRO runtime registration into Vault:
 bash scripts/sync-runtime-registration.sh ../mas-config-repo/envs/drroc4.env
 
+# after DRO values are present in Vault, enable BAS config and resync account-root:
+bash scripts/enable-bas-config.sh ../mas-config-repo/envs/drroc4.env
+
 # approve the Grafana 5.21.2 InstallPlan once (Manual pin for OCP 4.18):
 oc get installplan -A | grep grafana
 oc patch installplan <name> -n <ns> --type merge -p '{"spec":{"approved":true}}'
@@ -104,7 +107,8 @@ already binds the correct `openshift-gitops-argocd-repo-server` SA.)
   `vault.host: vault.apps.drroc4.lac1.biz`.
 - `gitops/envs/drroc4/values.yaml`: `instanceId: drgitopsapp`, `mongo.namespace: mongo-drgitops`,
   `mongo.version: 6.0.12`, `jdbc.sslEnabled: false`, `dro.namespace: ibm-software-central`,
-  `dro.syncEnabled: false` (flip to true once DRO is Running there), `sls.syncEnabled: true`.
+  `dro.syncEnabled: true`, `sls.syncEnabled: true`. The registration-sync Application stays manual,
+  so these values only declare what to harvest after SLS/DRO exist; they do not auto-run the harvest.
 
 **2.3 Air-gap check** (see Appendix B): the `hashicorp-vault-server` and
 `mongodb-community-operator` Applications pull upstream Helm charts. If drroc4 can't reach
@@ -130,7 +134,7 @@ Applications plus prerequisite resources and self-heals them. Sync-wave order:
 ```
 -20 platform-drroc4 (root)   -10 AVP config   10 Vault   19 Mongo SCC prereq
  20 Mongo operator (Helm)   25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)   40 JDBC
- 50 SLS/DRO sync (manual after SLS exists)   55 grafana-operator   60 Grafana
+ 50 SLS/DRO sync (manual after SLS/DRO exist)   55 grafana-operator   60 Grafana
 ```
 Early waves (AVP, Vault) go first. The secret-consuming waves (Mongo CR 25, JDBC 40, …) will sit
 in `ComparisonError`/retry until Vault is initialized and loaded in §4–§5 — expected.

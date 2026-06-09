@@ -1,5 +1,5 @@
-# wave 50 — SLS/DRO registration sync (local chart). Manual by default because SLS is created
-# only after the manual ibm-mas-account-root sync.
+# wave 50 — SLS/DRO registration sync (local chart). Manual by default because SLS/DRO
+# are created only after the manual ibm-mas-account-root sync.
 {{- if and (not .Values.rootOnly) .Values.enable.registrationSync }}
 ---
 apiVersion: argoproj.io/v1alpha1
@@ -41,6 +41,6 @@ spec:
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }
 {{- else }}
   # Intentionally no automated syncPolicy. Run scripts/sync-runtime-registration.sh
-  # after SLS is initialized.
+  # after SLS and DRO are initialized.
 {{- end }}
 {{- end }}

@@ -22,8 +22,10 @@ docs/        SETUP-GUIDE.md (run-each-step) and STRUCTURE.md (architecture).
 ./scripts/install-gated.sh ../mas-config-repo/envs/<cluster>.env
 # 3. manually sync IBM MAS account-root only after preflight passes
 ./scripts/sync-mas-account-root.sh ../mas-config-repo/envs/<cluster>.env
-# 4. after SLS initializes, sync runtime registration
+# 4. after SLS and DRO initialize, sync runtime registration
 ./scripts/sync-runtime-registration.sh ../mas-config-repo/envs/<cluster>.env
+# 5. after DRO values are in Vault, enable BAS config and resync account-root
+./scripts/enable-bas-config.sh ../mas-config-repo/envs/<cluster>.env
 ```
 Full procedure: [`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md). Architecture: [`docs/STRUCTURE.md`](docs/STRUCTURE.md).
 

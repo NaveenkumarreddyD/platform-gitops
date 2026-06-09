@@ -1,5 +1,5 @@
 instanceId: drgitopsapp
 mongo: { namespace: mongo-drgitops, members: 3, version: "6.0.12" }
 jdbc:  { sslEnabled: false }
-dro:   { namespace: ibm-software-central, syncEnabled: false }   # GitOps chart (030-ibm-dro) convention; redhat-marketplace is blocked on managed OCP. sync off until DRO is Running there
+dro:   { namespace: ibm-software-central, syncEnabled: true }   # harvest DRO registration after account-root creates DRO; BAS config is enabled after that
 sls:   { syncEnabled: true }
