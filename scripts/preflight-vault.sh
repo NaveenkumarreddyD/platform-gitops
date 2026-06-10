@@ -61,6 +61,27 @@ check_creds(){ # path u-field p-field
   [[ -n "$u" ]] && ok "$1#$2" || no "$1#$2 missing"
   [[ -n "$p" ]] && ok "$1#$3" || no "$1#$3 missing"
 }
+check_manage_crypto(){ # path
+  local crypto cryptox
+  crypto="$(field "$1" cryptoKey)"
+  cryptox="$(field "$1" cryptoxKey)"
+
+  if [[ -z "$crypto" ]]; then
+    no "$1#cryptoKey missing"
+  elif (( ${#crypto} % 24 != 0 )); then
+    no "$1#cryptoKey length ${#crypto} invalid; must be a multiple of 24"
+  else
+    ok "$1#cryptoKey (${#crypto} chars; multiple of 24)"
+  fi
+
+  if [[ -z "$cryptox" ]]; then
+    no "$1#cryptoxKey missing"
+  elif (( ${#cryptox} % 24 != 0 )); then
+    no "$1#cryptoxKey length ${#cryptox} invalid; must be a multiple of 24"
+  else
+    ok "$1#cryptoxKey (${#cryptox} chars; multiple of 24)"
+  fi
+}
 check_ca(){ # path field
   local c; c="$(field "$1" "$2")"
   if [[ -z "$c" ]]; then no "$1#$2 missing"
@@ -89,7 +110,7 @@ if [[ "${JDBC_SSL_ENABLED:-false}" =~ ^(1|true|yes)$ || "${JDBC_CA_REQUIRED:-fal
 else
   ok "$IP/jdbc-system#ca.crt not required (JDBC_SSL_ENABLED=false)"
 fi
-echo "== manage-crypto =="; check_creds "$IP/manage-crypto" cryptoKey cryptoxKey
+echo "== manage-crypto =="; check_manage_crypto "$IP/manage-crypto"
 echo "== superuser =="; check_creds "$IP/superuser" username password
 
 echo "== sls (registration) =="

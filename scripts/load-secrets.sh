@@ -23,7 +23,6 @@ MONGO_HOST="${MONGO_HOST:-${INSTANCE_ID}-mongo-svc.${MONGO_NS:-mongo-${INSTANCE_
 vrun(){ oc exec -n "$VAULT_NS" "$VAULT_POD" -- sh -c "export VAULT_ADDR=$VADDR VAULT_TOKEN='$VAULT_TOKEN'; $*"; }
 vget(){ vrun "vault kv get -field='$2' $1" 2>/dev/null || true; }
 gen(){ openssl rand -base64 "${1:-24}" | tr -d '/+=' | cut -c1-"${2:-24}"; }
-genhex(){ openssl rand -hex "${1:-32}"; }
 putfile(){ oc cp "$1" "$VAULT_NS/$VAULT_POD:/tmp/$2"; }
 
 : "${IBM_ENTITLEMENT_KEY:?REQUIRED}"; : "${MAS_LICENSE_FILE:?REQUIRED path to license.dat}"
@@ -33,8 +32,8 @@ putfile(){ oc cp "$1" "$VAULT_NS/$VAULT_POD:/tmp/$2"; }
 # generate-once (reused on re-run)
 MAS_SUPERUSER_USERNAME="${MAS_SUPERUSER_USERNAME:-$(vget "$IPREFIX/superuser" username)}"; MAS_SUPERUSER_USERNAME="${MAS_SUPERUSER_USERNAME:-superuser}"
 MAS_SUPERUSER_PASSWORD="${MAS_SUPERUSER_PASSWORD:-$(vget "$IPREFIX/superuser" password)}"; MAS_SUPERUSER_PASSWORD="${MAS_SUPERUSER_PASSWORD:-$(gen 24 24)}"
-MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoKey)}";   MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(genhex 32)}"
-MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoxKey)}"; MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(genhex 32)}"
+MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoKey)}";   MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(gen 72 72)}"
+MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoxKey)}"; MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(gen 72 72)}"
 MONGO_USERNAME="${MONGO_USERNAME:-admin}"
 MONGO_PASSWORD="${MONGO_PASSWORD:-$(vget "$IPREFIX/mongo" password)}"; MONGO_PASSWORD="${MONGO_PASSWORD:-$(gen 24 24)}"
 SLS_MONGO_USERNAME="${SLS_MONGO_USERNAME:-slsmongo}"
