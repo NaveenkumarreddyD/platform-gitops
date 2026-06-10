@@ -22,7 +22,7 @@ MONGO_HOST="${MONGO_HOST:-${INSTANCE_ID}-mongo-svc.${MONGO_NS:-mongo-${INSTANCE_
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
 vrun(){ oc exec -n "$VAULT_NS" "$VAULT_POD" -- sh -c "export VAULT_ADDR=$VADDR VAULT_TOKEN='$VAULT_TOKEN'; $*"; }
 vget(){ vrun "vault kv get -field='$2' $1" 2>/dev/null || true; }
-gen(){ openssl rand -base64 "${1:-24}" | tr -d '/+=' | cut -c1-"${2:-24}"; }
+gen(){ openssl rand -base64 "${1:-24}" | tr -d '\r\n/+=' | cut -c1-"${2:-24}"; }
 putfile(){ oc cp "$1" "$VAULT_NS/$VAULT_POD:/tmp/$2"; }
 
 : "${IBM_ENTITLEMENT_KEY:?REQUIRED}"; : "${MAS_LICENSE_FILE:?REQUIRED path to license.dat}"

@@ -68,6 +68,8 @@ check_manage_crypto(){ # path
 
   if [[ -z "$crypto" ]]; then
     no "$1#cryptoKey missing"
+  elif [[ "$crypto" =~ [[:space:]] ]]; then
+    no "$1#cryptoKey contains whitespace/newline characters"
   elif (( ${#crypto} % 24 != 0 )); then
     no "$1#cryptoKey length ${#crypto} invalid; must be a multiple of 24"
   else
@@ -76,6 +78,8 @@ check_manage_crypto(){ # path
 
   if [[ -z "$cryptox" ]]; then
     no "$1#cryptoxKey missing"
+  elif [[ "$cryptox" =~ [[:space:]] ]]; then
+    no "$1#cryptoxKey contains whitespace/newline characters"
   elif (( ${#cryptox} % 24 != 0 )); then
     no "$1#cryptoxKey length ${#cryptox} invalid; must be a multiple of 24"
   else
