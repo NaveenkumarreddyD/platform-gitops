@@ -5,7 +5,7 @@ argoNamespace: openshift-gitops
 
 platform:  { repo_url: https://gitlab.lac1.biz/gitops/platform-gitops.git, revision: main }
 source:    { repo_url: https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git,   revision: "8.0.0" }
-generator: { repo_url: https://gitlab.lac1.biz/gitops/mas-config-repo.git, revision: main }
+generator: { repo_url: https://gitlab.lac1.biz/gitops/mas-gitops-config.git, revision: main }
 
 account: { id: mas }
 storageClass: isilon
@@ -22,6 +22,13 @@ vault:
   auditSize: 10Gi
   replicas: 3
   host: vault.example.local                # OVERRIDE per env (env-common)
+  # Opt-in auto-unseal (OSS, no cloud KMS): a CronJob in ns/vault re-unseals sealed raft nodes
+  # from a Kubernetes Secret. Enable enable.vaultUnseal too, and create the keys Secret with
+  # scripts/init-vault.sh --store-k8s-secret (or scripts/setup-vault-autounseal.sh).
+  autoUnseal:
+    enabled: false
+    keysSecret: vault-unseal-keys
+    schedule: "*/2 * * * *"
 
 # Keep IBM MAS account-root manual by default. Sync it only after Vault is initialized,
 # required secrets are loaded, and the dedicated MongoDB is Running.
@@ -34,6 +41,7 @@ mongoOperator: { repo: https://mongodb.github.io/helm-charts, chart: community-o
 # which Applications to emit
 enable:
   vault: true
+  vaultUnseal: false        # set true (with vault.autoUnseal.enabled) to deploy the auto-unseal CronJob
   accountRoot: true
   operators: true
   mongodb: true

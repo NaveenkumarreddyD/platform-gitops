@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vault-unseal-script
+  namespace: {{ .Values.namespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform, app.kubernetes.io/name: vault-unseal }
+data:
+  unseal.sh: |-
+{{ .Files.Get "files/unseal.sh" | indent 4 }}

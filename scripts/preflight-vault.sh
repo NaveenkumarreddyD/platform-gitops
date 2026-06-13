@@ -120,7 +120,7 @@ echo "== superuser =="; check_creds "$IP/superuser" username password
 echo "== sls (registration) =="
 rk="$(field "$IP/sls" registration_key)"
 if [[ -z "$rk" ]]; then
-  printf '  \033[33mWARN\033[0m  %s\n' "$IP/sls#registration_key empty -> OK only if SLS not yet deployed (own-SLS) OR using centralized SLS not yet wired. Run harvest-sls-registration.sh after SLS is Ready."
+  printf '  \033[33mWARN\033[0m  %s\n' "$IP/sls#registration_key empty -> OK only if SLS not yet deployed (own-SLS) OR using centralized SLS not yet wired. Run scripts/sync-runtime-registration.sh after SLS is Ready (harvests SLS/DRO into Vault via the in-cluster vault-sync jobs)."
 else ok "$IP/sls#registration_key"; check_ca "$IP/sls" ca.crt
   [[ -n "$(field "$IP/sls" url)" ]] && ok "$IP/sls#url" || no "$IP/sls#url missing"; fi
 

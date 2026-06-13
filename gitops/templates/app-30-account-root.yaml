@@ -1,4 +1,4 @@
-# wave 30 — IBM MAS account-root (IBM mirror; deploys Suite/Manage from mas-config-repo)
+# wave 30 — IBM MAS account-root (IBM mirror; deploys Suite/Manage from mas-gitops-config)
 # Default is manual sync: this is the gate after Vault/Mongo/secrets are ready.
 {{- if and (not .Values.rootOnly) .Values.enable.accountRoot }}
 ---

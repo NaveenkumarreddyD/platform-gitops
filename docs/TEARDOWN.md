@@ -46,7 +46,7 @@ oc get csv -A | grep -Ei 'ibm-mas|ibm-sls|cert-manager|grafana'                 
 
 ## 4. After the wipe — flip GitOps to greenfield
 The cluster no longer has the Ansible-provided shared prereqs, so GitOps must install them now:
-- `mas-config-repo/envs/<cluster>.env`: set `SHARED_CLUSTER=false` (or clear `SHARED_CLUSTER_SKIP`)
+- `mas-gitops-config/envs/<cluster>.env`: set `SHARED_CLUSTER=false` (or clear `SHARED_CLUSTER_SKIP`)
   so `render.py` stops skipping `redhat-cert-manager.yaml` and `ibm-dro.yaml`, and re-render.
 - The catalog (`ibm-operator-catalog.yaml`) is rendered by GitOps anyway — it will recreate the
   CatalogSource at your pinned tag.

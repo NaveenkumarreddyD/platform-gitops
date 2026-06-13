@@ -44,5 +44,5 @@ time out before account-root creates SLS.
 ## Add a cluster/env
 1. `gitops/envs/<cluster>/`: copy `envs/_example/` -> `common.yaml` (clusterId, storageClass, vault.host) + `values.yaml` (instanceId, mongo ns, jdbc, dro, sls).
 2. (operators + grafana need NOTHING per-cluster — they render from their own values.yaml.)
-3. `mas-config-repo`: add `envs/<cluster>.env` + `render.py <cluster>`.
+3. `mas-gitops-config`: add `envs/<cluster>.env` + `render.py <cluster>`.
 4. `./bootstrap/apply.sh <env>` on that cluster. No template edits.
