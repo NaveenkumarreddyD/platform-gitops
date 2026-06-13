@@ -6,7 +6,7 @@ metadata:
 spec:
   description: MAS GitOps applications
   # SOURCES — only these repos may be deployed from (match the repo_urls in gitops/values.yaml;
-  # the glob covers platform-gitops, ibm-mas-gitops, mas-config-repo). Update the host if not GitLab.
+  # the glob covers platform-gitops, ibm-mas-gitops, mas-gitops-config). Update the host if not GitLab.
   sourceRepos:
     - https://gitlab.lac1.biz/gitops/*
     - https://helm.releases.hashicorp.com        # Vault chart

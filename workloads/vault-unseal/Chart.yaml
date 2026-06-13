@@ -1,0 +1,11 @@
+apiVersion: v2
+name: vault-unseal
+version: 0.1.0
+description: >
+  Opt-in auto-unseal for the in-cluster HashiCorp Vault (OSS) raft cluster.
+  A CronJob periodically checks each raft node and unseals any that are sealed,
+  using unseal keys stored in a Kubernetes Secret. This removes the manual
+  "unseal every pod after a restart" step without requiring a cloud KMS
+  (AWS/Azure/GCP) or a second transit Vault — appropriate for on-prem / non-IBM.
+  Security note: unseal keys live in a Kubernetes Secret in the vault namespace.
+  For HSM-grade custody use a transit/KMS seal instead (see docs/AUTOMATION.md).

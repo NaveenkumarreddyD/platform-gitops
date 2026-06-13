@@ -1,0 +1,10 @@
+# vault-unseal chart values
+namespace: vault                 # where Vault runs
+replicas: 3                      # number of raft nodes (vault-0..N-1)
+internalService: vault-internal  # Vault headless service name
+port: 8200
+scheme: http                     # in-cluster listener is tls_disable=1 (http)
+schedule: "*/2 * * * *"          # how often to sweep for sealed nodes
+keysSecret: vault-unseal-keys    # Secret holding unseal-key-0..N files
+image: hashicorp/vault:1.18      # vault CLI image (overridden by gitops values)
+serviceAccount: vault-unseal
