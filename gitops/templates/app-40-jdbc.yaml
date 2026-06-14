@@ -36,6 +36,11 @@ spec:
             jdbc_username: "<path:{{ include "gitops.path" . }}/jdbc-system#username>"
             jdbc_password: "<path:{{ include "gitops.path" . }}/jdbc-system#password>"
             jdbc_ca_crt: "<path:{{ include "gitops.path" . }}/jdbc-system#ca.crt>"
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
   # Intentionally manual. This chart creates JdbcCfg, whose CRD is installed by
-  # MAS Suite. scripts/sync-jdbc-config.sh gates on that CRD before syncing.
+  # MAS Suite. A PreSync hook and scripts/sync-jdbc-config.sh both gate on that
+  # CRD before applying JdbcCfg.
 {{- end }}

@@ -1,4 +1,5 @@
 instance_id: drgitopsapp
+cli_image_repo: registry.redhat.io/openshift4/ose-cli:latest
 mas_config_name: drgitopsapp-jdbc-system
 workspace_id: drgitopswks
 # ---- SSL toggle ----

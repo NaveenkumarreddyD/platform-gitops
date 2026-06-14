@@ -239,6 +239,8 @@ export VAULT_TOKEN='<vault admin>'
 ./scripts/sync-jdbc-config.sh ../mas-config-repo/envs/drroc4.env
 ```
 This waits for `jdbccfgs.config.mas.ibm.com` and then syncs `drgitopsapp-jdbc-system`.
+The JDBC chart also has a PreSync CRD wait hook plus `SkipDryRunOnMissingResource=true`, so an
+accidental early sync waits for MAS CRDs instead of immediately failing on a missing `JdbcCfg` kind.
 
 **7.3 SLS/DRO registration sync** (after `LicenseService` is Ready)
 ```bash
