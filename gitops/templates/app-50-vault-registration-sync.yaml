@@ -1,11 +1,11 @@
-# wave 50 — SLS/DRO registration sync (local chart). Manual by default because SLS/DRO
+# wave 50 — runtime registration sync (local chart). Manual by default because SLS/DRO
 # are created only after the manual ibm-mas-account-root sync.
-{{- if and (not .Values.rootOnly) .Values.enable.registrationSync }}
+{{- if and (not .Values.rootOnly) .Values.enable.registrationSync .Values.sls.syncEnabled }}
 ---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: vault-registration-sync-{{ .Values.instanceId }}
+  name: vault-sync-sls-{{ .Values.instanceId }}
   namespace: {{ .Values.argoNamespace }}
   labels: { app.kubernetes.io/part-of: mas-platform }
   annotations: { argocd.argoproj.io/sync-wave: "50" }
@@ -32,8 +32,8 @@ spec:
         deployShared: false
         ocImage: {{ .Values.images.oc }}
         vaultImage: {{ .Values.images.vault }}
-        slsSync: { enabled: {{ .Values.sls.syncEnabled }}, namespace: {{ include "gitops.slsNs" . | quote }} }
-        droSync: { enabled: {{ .Values.dro.syncEnabled }}, namespace: {{ .Values.dro.namespace }} }
+        slsSync: { enabled: true, namespace: {{ include "gitops.slsNs" . | quote }} }
+        droSync: { enabled: false, namespace: {{ .Values.dro.namespace }} }
         mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
 {{- if .Values.registrationSync.autoSync }}
   syncPolicy:
@@ -43,6 +43,52 @@ spec:
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }
 {{- else }}
   # Intentionally no automated syncPolicy. Run scripts/sync-runtime-registration.sh
-  # after SLS and DRO are initialized.
+  # after SLS is initialized.
+{{- end }}
+{{- end }}
+{{- if and (not .Values.rootOnly) .Values.enable.registrationSync .Values.dro.syncEnabled }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: vault-sync-dro-{{ .Values.instanceId }}
+  namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform }
+  annotations: { argocd.argoproj.io/sync-wave: "50" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  revisionHistoryLimit: 10
+  project: {{ .Values.project }}
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.argoNamespace }}
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/vault-sync
+    helm:
+      values: |
+        accountId: {{ .Values.account.id }}
+        clusterId: {{ .Values.clusterId }}
+        instanceId: {{ .Values.instanceId }}
+        vaultAddr: {{ .Values.vault.addr }}
+        vaultRole: {{ .Values.vault.writerRole }}
+        namespace: {{ .Values.argoNamespace }}
+        serviceAccount: vault-registration-sync
+        deployShared: false
+        ocImage: {{ .Values.images.oc }}
+        vaultImage: {{ .Values.images.vault }}
+        slsSync: { enabled: false, namespace: {{ include "gitops.slsNs" . | quote }} }
+        droSync: { enabled: true, namespace: {{ .Values.dro.namespace }} }
+        mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
+{{- if .Values.registrationSync.autoSync }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+{{- else }}
+  # Intentionally no automated syncPolicy. Run scripts/sync-runtime-registration.sh
+  # after DRO is initialized.
 {{- end }}
 {{- end }}

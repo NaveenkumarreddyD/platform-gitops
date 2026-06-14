@@ -1,31 +1,51 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Run after ibm-mas-account-root has created the dedicated SLS and DRO runtime services.
-# This syncs the SLS/DRO registration job Application and hard-refreshes consumers.
+# Run after ibm-mas-account-root has created the dedicated SLS and optionally DRO runtime services.
+# SLS and DRO are intentionally separate so SLSCfg can be enabled without waiting for DRO/BAS.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"
-ENVFILE="${1:?usage: sync-runtime-registration.sh <path/to/cluster.env>}"
+
+MODE="all"; ENVFILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --sls-only|--sls) MODE="sls"; shift ;;
+    --dro-only|--dro) MODE="dro"; shift ;;
+    -h|--help)
+      echo "usage: sync-runtime-registration.sh [--sls-only|--dro-only] <path/to/cluster.env>"
+      exit 0
+      ;;
+    *) ENVFILE="$1"; shift ;;
+  esac
+done
+ENVFILE="${ENVFILE:?usage: sync-runtime-registration.sh [--sls-only|--dro-only] <path/to/cluster.env>}"
 # shellcheck disable=SC1090
 set -a; . "$ENVFILE"; set +a
 : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
 SLS_NS="${SLS_NS:-mas-${INSTANCE_ID}-sls}"
 DRO_NS="${DRO_NAMESPACE:-ibm-software-central}"
-DRO_SYNC_REQUIRED="${DRO_SYNC_REQUIRED:-true}"
 
-echo ">> waiting for LicenseService in $SLS_NS to initialize..."
-wait_crd licenseservices.sls.ibm.com 1800
-i=0
-until {
-  initialized="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
-  registration_key="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
-  [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ]]
-}; do
-  (( i += 15 ))
-  [[ "$i" -ge 1800 ]] && { echo "ERROR: timeout waiting for SLS initialized"; oc get licenseservices.sls.ibm.com -n "$SLS_NS" 2>/dev/null || true; exit 1; }
-  sleep 15
-done
+sync_sls() {
+  echo ">> waiting for LicenseService in $SLS_NS to initialize..."
+  wait_crd licenseservices.sls.ibm.com 1800
+  i=0
+  until {
+    initialized="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
+    registration_key="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
+    [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ]]
+  }; do
+    (( i += 15 ))
+    [[ "$i" -ge 1800 ]] && { echo "ERROR: timeout waiting for SLS initialized"; oc get licenseservices.sls.ibm.com -n "$SLS_NS" 2>/dev/null || true; exit 1; }
+    sleep 15
+  done
 
-if [[ "$DRO_SYNC_REQUIRED" =~ ^(1|true|yes)$ ]]; then
+  sync_app_oc "vault-sync-sls-${INSTANCE_ID}" true
+  wait_app_synced_healthy "vault-sync-sls-${INSTANCE_ID}" 1200
+
+  hard_refresh_app "${INSTANCE_ID}-sls-system.${CLUSTER_ID}"
+  echo ">> SLS registration sync completed."
+}
+
+sync_dro() {
   echo ">> waiting for DRO runtime material in $DRO_NS..."
   i=0
   until oc get route -n "$DRO_NS" 2>/dev/null | grep -qiE 'data-reporter|dro'; do
@@ -39,11 +59,24 @@ if [[ "$DRO_SYNC_REQUIRED" =~ ^(1|true|yes)$ ]]; then
     [[ "$i" -ge 1800 ]] && { echo "ERROR: timeout waiting for DRO secret in $DRO_NS"; oc get secret -n "$DRO_NS" 2>/dev/null || true; exit 1; }
     sleep 15
   done
-fi
 
-sync_app_oc "vault-registration-sync-${INSTANCE_ID}" true
-wait_app_synced_healthy "vault-registration-sync-${INSTANCE_ID}" 1200
+  sync_app_oc "vault-sync-dro-${INSTANCE_ID}" true
+  wait_app_synced_healthy "vault-sync-dro-${INSTANCE_ID}" 1200
 
-hard_refresh_app "${INSTANCE_ID}-sls-system.${CLUSTER_ID}"
-hard_refresh_app "${INSTANCE_ID}-bas-system.${CLUSTER_ID}"
-echo ">> runtime registration sync requested."
+  hard_refresh_app "${INSTANCE_ID}-bas-system.${CLUSTER_ID}"
+  echo ">> DRO registration sync completed."
+}
+
+case "$MODE" in
+  sls) sync_sls ;;
+  dro) sync_dro ;;
+  all)
+    sync_sls
+    if oc get application "vault-sync-dro-${INSTANCE_ID}" -n "$ARGO_NS" >/dev/null 2>&1; then
+      sync_dro
+    else
+      echo ">> vault-sync-dro-${INSTANCE_ID} is not present; skipping DRO registration."
+      echo ">> Enable DRO later, then run: $0 --dro-only $ENVFILE"
+    fi
+    ;;
+esac

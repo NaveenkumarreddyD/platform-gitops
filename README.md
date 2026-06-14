@@ -17,6 +17,11 @@ docs/        SETUP-GUIDE.md (step reference), AUTOMATION.md (one-shot flow), STR
 ```
 
 ## Quick start (per cluster, once)
+
+For `drroc4`, use the staged bring-up first: [`docs/STAGED-RUNBOOK.md`](docs/STAGED-RUNBOOK.md).
+It keeps SLSCfg, Manage, and DRO/BAS behind manual gates so OLM/catalog or runtime-secret issues do
+not cascade through the whole MAS tree.
+
 ```bash
 # 1. fill in real repo creds: bootstrap/00-prereqs/repo-creds/
 ./bootstrap/apply.sh <nroc4|roc4|drroc4>      # applies ONLY the root app; ArgoCD generates the rest

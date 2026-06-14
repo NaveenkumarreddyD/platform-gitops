@@ -20,6 +20,19 @@ wait_app_idle() {
   done
 }
 
+wait_app_exists() {
+  local app="${1:?app name}" timeout="${2:-600}" elapsed=0
+  while :; do
+    oc get application "$app" -n "$ARGO_NS" >/dev/null 2>&1 && {
+      echo ">> application/$app exists"
+      return 0
+    }
+    (( elapsed += 5 ))
+    [[ "$elapsed" -ge "$timeout" ]] && { echo "ERROR: timeout waiting for application/$app" >&2; return 1; }
+    sleep 5
+  done
+}
+
 sync_app_oc() {
   local app="${1:?app name}" prune="${2:-false}"
   oc get application "$app" -n "$ARGO_NS" >/dev/null

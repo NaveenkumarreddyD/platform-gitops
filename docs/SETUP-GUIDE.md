@@ -8,6 +8,10 @@ Grafana disabled by default, and in-cluster Vault (VM-Vault deltas in Appendix A
 Example values used throughout: cluster `drroc4`, instance `drgitopsapp`, account `mas`,
 storageClass `isilon`, Vault route `vault.apps.drroc4.lac1.biz`.
 
+> **Current drroc4 recommendation:** use [`STAGED-RUNBOOK.md`](STAGED-RUNBOOK.md) first. It keeps
+> SLSCfg, Manage, and DRO/BAS behind manual gates. The older `install-all.sh` flow is still useful
+> for prerequisites, but it is intentionally not the primary path while drroc4 is being stabilized.
+
 > **Two ground rules for Vault + ArgoCD**
 > 1. ArgoCD caches rendered manifests by **git revision, not Vault**. After *any* Vault value
 >    change: `oc rollout restart deploy/openshift-gitops-repo-server -n openshift-gitops` + hard-refresh the app.

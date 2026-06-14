@@ -5,6 +5,9 @@ Plugin), as the on-prem / non-IBM replacement for IBM's AWS-Secrets-Manager-back
 documents how much of the bring-up is automated, the exact deployment **sequence**, and the
 opt-in **auto-unseal**.
 
+> For drroc4, prefer [`STAGED-RUNBOOK.md`](STAGED-RUNBOOK.md). The staged path is deliberately less
+> automated: SLSCfg, Manage, and DRO/BAS are enabled only after their live prerequisites are proven.
+
 ## Why some steps are scripts and not pure ArgoCD
 
 IBM's reference GitOps is "no-touch": push config + register secrets, and ArgoCD does the rest using
