@@ -7,7 +7,7 @@ set -euo pipefail
 # async precondition along the way (the individual scripts already block on
 # MongoDB/SLS/DRO readiness). This collapses the old multi-command hand-off
 # (deploy -> prepare-prereqs -> sync-mas-account-root -> sync-jdbc-config ->
-# sync-grafana -> sync-runtime-registration -> enable-bas-config -> verify) into a single
+# sync-runtime-registration -> enable-bas-config -> verify) into a single
 # command, WITHOUT removing the safety waits.
 #
 # Prerequisites (same as before):
@@ -26,7 +26,7 @@ set -euo pipefail
 #   --skip-bas       do not enable BAS/DRO Suite config even if DRO is present
 #   --init-vault     run scripts/init-vault.sh first (still prints/saves keys)
 #   --from <step>    resume at a step: deploy|prereqs|account-root|jdbc|
-#                    grafana|registration|bas|verify
+#                    registration|bas|verify
 #   --until <step>   stop AFTER this step (e.g. --until prereqs reproduces the
 #                    old install-gated.sh: prerequisites only, MAS not started)
 #   -h, --help       show this help
@@ -57,7 +57,7 @@ set -a; . "$ENVFILE"; set +a
 DRO_NS="${DRO_NAMESPACE:-ibm-software-central}"
 
 # step ordering for --from resume
-STEPS=(deploy prereqs account-root jdbc grafana registration bas verify)
+STEPS=(deploy prereqs account-root jdbc registration bas verify)
 START_IDX=0
 END_IDX=$(( ${#STEPS[@]} - 1 ))
 idx_of(){ local t="$1"; for i in "${!STEPS[@]}"; do [[ "${STEPS[$i]}" == "$t" ]] && { echo "$i"; return 0; }; done; return 1; }
@@ -106,24 +106,18 @@ if should_run jdbc; then
   ./scripts/sync-jdbc-config.sh "$ENVFILE"
 fi
 
-# ----- 6. approve pinned Grafana InstallPlan and sync Grafana after CRDs exist -----
-if should_run grafana; then
-  banner "6. Approve pinned Grafana operator and sync Grafana"
-  ./scripts/sync-grafana.sh "$ENVFILE" || echo ">> Grafana sync deferred; run scripts/app-diagnostics.sh $ENVFILE for details."
-fi
-
-# ----- 7. SLS/DRO runtime registration -> Vault -----
+# ----- 6. SLS/DRO runtime registration -> Vault -----
 if should_run registration; then
-  banner "7. Sync SLS/DRO runtime registration into Vault"
+  banner "6. Sync SLS/DRO runtime registration into Vault"
   ./scripts/sync-runtime-registration.sh "$ENVFILE"
 fi
 
-# ----- 8. enable BAS/DRO Suite config (only if DRO present) -----
+# ----- 7. enable BAS/DRO Suite config (only if DRO present) -----
 if should_run bas; then
   if [[ "$SKIP_BAS" == 1 ]]; then
-    banner "8. BAS/DRO Suite config — SKIPPED (--skip-bas)"
+    banner "7. BAS/DRO Suite config — SKIPPED (--skip-bas)"
   else
-    banner "8. Enable BAS/DRO Suite config"
+    banner "7. Enable BAS/DRO Suite config"
     if ./scripts/enable-bas-config.sh "${PASS_ARGS[@]}" "$ENVFILE"; then
       echo ">> BAS config enabled."
     else
@@ -133,9 +127,9 @@ if should_run bas; then
   fi
 fi
 
-# ----- 9. verify -----
+# ----- 8. verify -----
 if should_run verify; then
-  banner "9. Verify platform"
+  banner "8. Verify platform"
   ./scripts/status-summary.sh "$ENVFILE" || true
   ./scripts/app-diagnostics.sh "$ENVFILE" || true
   ./scripts/verify-platform.sh || true

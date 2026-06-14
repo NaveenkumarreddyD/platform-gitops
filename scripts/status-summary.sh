@@ -16,8 +16,6 @@ oc get application -n "$ARGO_NS" \
   "vault-sync-mongo-${INSTANCE_ID}" \
   "ibm-mas-account-root" \
   "${INSTANCE_ID}-jdbc-system" \
-  "grafana-operator" \
-  "grafana-${CLUSTER_ID}" \
   "vault-registration-sync-${INSTANCE_ID}" \
   -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,OP:.status.operationState.phase 2>/dev/null || true
 

@@ -13,4 +13,4 @@ sync_app_oc ibm-mas-account-root false
 wait_app_synced_idle ibm-mas-account-root 1800
 
 echo ">> MAS account-root sync completed. It may remain Progressing until SLS/DRO registration and gated config apps finish."
-echo ">> Next gated steps: scripts/sync-jdbc-config.sh, scripts/approve-grafana-installplan.sh, scripts/sync-grafana.sh, scripts/sync-runtime-registration.sh"
+echo ">> Next gated steps: scripts/sync-jdbc-config.sh, scripts/sync-runtime-registration.sh"

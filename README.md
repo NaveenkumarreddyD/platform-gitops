@@ -9,7 +9,7 @@ bootstrap/   day-0 seed (the ONLY manual step): prereqs, AVP enablement, AppProj
 gitops/      app-of-apps generator (self-healing). templates/root-application.yaml + one
              app-NN-*.yaml per workload. Per-cluster values under envs/<cluster>/.
 workloads/   the charts the Applications deploy: operators, mongodb, jdbc, vault-sync,
-             vault-unseal (opt-in auto-unseal), grafana.
+             vault-unseal (opt-in auto-unseal). Grafana is disabled by default.
 scripts/     imperative glue GitOps can't do (Vault auth, load secrets, runtime registration).
              install-all.sh is the one-shot orchestrator that chains them all.
 vault-auth/  Vault k8s-auth setup + policies.
@@ -27,7 +27,7 @@ export VAULT_TOKEN=<root-token-it-prints>
 export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID=... \
        JDBC_USERNAME=... JDBC_PASSWORD=... JDBC_URL=...
 
-# 3. ONE command: secrets -> render -> Mongo -> account-root -> Grafana approve ->
+# 3. ONE command: secrets -> render -> Mongo -> account-root ->
 #    SLS/DRO registration -> BAS -> verify (each step waits for its precondition):
 ./scripts/install-all.sh --yes ../mas-config-repo/envs/<cluster>.env
 ```

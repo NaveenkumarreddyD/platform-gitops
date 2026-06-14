@@ -43,16 +43,15 @@ install-all.sh, in order — each step blocks on its precondition:
                        publish Mongo CA into Vault -> full Vault preflight
  4 account-root        full preflight -> sync ibm-mas-account-root -> WAIT Synced/Healthy
                        (this is what starts MAS Core / SLS / Manage generation)
- 5 grafana            approve the pinned grafana-operator.v5.21.2 InstallPlan (OCP < 4.19 pin)
- 6 registration       WAIT LicenseService initialized -> WAIT DRO route+secret ->
+ 5 registration       WAIT LicenseService initialized -> WAIT DRO route+secret ->
                        sync vault-registration-sync (in-cluster jobs harvest SLS+DRO -> Vault)
- 7 bas                verify dro#url/api_token/ca.crt in Vault -> enable BAS -> resync account-root
- 8 verify             status summary + AVP/health checks
+ 6 bas                verify dro#url/api_token/ca.crt in Vault -> enable BAS -> resync account-root
+ 7 verify             status summary + AVP/health checks
 ```
 
 Platform ArgoCD sync-waves (local to `gitops/`): `-20` root, `-10` AVP, `10` Vault,
 `11` vault-unseal (opt-in), `19` Mongo SCC, `20` Mongo operator, `25` Mongo CR, `28` mongo→Vault,
-`30` account-root, `40` JDBC, `50` registration-sync, `55` grafana-operator, `60` Grafana.
+`30` account-root, `40` JDBC, `50` registration-sync. Grafana is disabled by default.
 Inside `account-root`, IBM's chart applies its own cluster-apps (cert-manager → operator catalog →
 DRO → SLS) before instance-apps (MongoCfg → Suite → Manage), each with healthcheck-gated waves.
 
@@ -74,7 +73,7 @@ Options:
 | `--no-push` | render + commit locally, don't push (you push manually) |
 | `--skip-bas` | don't enable BAS/DRO Suite config |
 | `--init-vault` | run `init-vault.sh` first (still saves/prints keys) |
-| `--from <step>` | resume at `deploy\|prereqs\|account-root\|grafana\|registration\|bas\|verify` |
+| `--from <step>` | resume at `deploy\|prereqs\|account-root\|jdbc\|registration\|bas\|verify` |
 | `--until <step>` | stop after a step — `--until prereqs` reproduces the old `install-gated.sh` |
 
 Idempotent: every sub-step is safe to re-run, so a failed run resumes with `--from`.

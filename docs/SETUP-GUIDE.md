@@ -3,7 +3,7 @@
 End-to-end bring-up of a **greenfield** cluster with `platform-gitops` (the engine + platform
 workloads) and `mas-config-repo` (the MAS CRs). Reflects the current state: 3-tier layout
 (`bootstrap` / `gitops` / `workloads`), self-managing root, dedicated per-instance MongoDB,
-Grafana operator pinned for **OCP 4.18**, and in-cluster Vault (VM-Vault deltas in Appendix A).
+Grafana disabled by default, and in-cluster Vault (VM-Vault deltas in Appendix A).
 
 Example values used throughout: cluster `drroc4`, instance `drgitopsapp`, account `mas`,
 storageClass `isilon`, Vault route `vault.apps.drroc4.lac1.biz`.
@@ -36,7 +36,7 @@ export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID
 
 # ONE command does the rest, each step waiting for its precondition:
 #   secrets -> render/push -> Mongo prereqs + Mongo CA -> account-root (Core/SLS/Manage) ->
-#   gated JDBC config -> gated Grafana -> SLS/DRO registration -> BAS -> verify.
+#   gated JDBC config -> SLS/DRO registration -> BAS -> verify.
 bash scripts/install-all.sh --yes ../mas-config-repo/envs/drroc4.env
 
 oc get applications -n openshift-gitops -w     # watch it converge in wave order
@@ -135,14 +135,13 @@ Applications plus prerequisite resources and self-heals them. Sync-wave order:
  20 Mongo operator (Helm)   25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)
  40 JDBC Application (manual after MAS config CRDs exist)
  50 SLS/DRO sync (manual after SLS/DRO exist)
- 55 grafana-operator   60 Grafana Application (manual after Grafana CRDs exist)
 ```
 Early waves (AVP, Vault) go first. Secret-consuming automated waves such as Mongo CR 25 can sit
 in `ComparisonError`/retry until Vault is initialized and loaded in §4–§5 — expected.
-JDBC and the Grafana operand are not automated; their scripts sync them only after the CRDs exist.
+JDBC is not automated; its script syncs it only after the MAS config CRDs exist.
 `ibm-mas-account-root` is created by the root app but has no automated sync policy by default, so
-MAS Core/SLS/Manage do not start until you manually sync it. The JDBC and Grafana operand
-Applications are also manual because their CRs must not sync before their operators register CRDs.
+MAS Core/SLS/Manage do not start until you manually sync it. The JDBC Application is also manual
+because its CR must not sync before MAS registers config CRDs.
 `vault-registration-sync-*` is manual by default; sync it after SLS initializes.
 
 ```bash
@@ -241,14 +240,7 @@ export VAULT_TOKEN='<vault admin>'
 ```
 This waits for `jdbccfgs.config.mas.ibm.com` and then syncs `drgitopsapp-jdbc-system`.
 
-**7.3 Approve the Grafana operator InstallPlan and sync Grafana**
-```bash
-./scripts/sync-grafana.sh ../mas-config-repo/envs/drroc4.env
-```
-This approves only `grafana-operator.v5.21.2`, waits for Grafana CRDs, then syncs `grafana-drroc4`.
-Do NOT approve any v5.22.x plan until the cluster is on OCP >= 4.19.
-
-**7.4 SLS/DRO registration sync** (after `LicenseService` is Ready)
+**7.3 SLS/DRO registration sync** (after `LicenseService` is Ready)
 ```bash
 ./scripts/sync-runtime-registration.sh ../mas-config-repo/envs/drroc4.env
 ```
@@ -267,7 +259,7 @@ oc get applications -n openshift-gitops -o json | jq -r \
    | "\(.metadata.name)\t\(.status.sync.status)\t\(.status.health.status)"' | column -t
 ```
 Expected end state: all Applications `Synced` + `Healthy`; Suite → ManageWorkspace → Manage Ready;
-Grafana route reachable.
+Grafana is disabled by default.
 
 ---
 
@@ -322,8 +314,6 @@ repos already.
 | Vault value changed but app stale | cache keyed by git revision | `rollout restart` repo-server + hard refresh |
 | `license#license_file is base64-encoded` | license.dat was stored encoded | re-run `load-secrets.sh`; it stores raw license text |
 | CA error `InvalidByte(..,92)` | escaped `\n` PEM | re-store real multiline PEM via `update-vault-ca.sh` |
-| Grafana operator stuck Pending/Replacing | v5.22.x CRD on OCP < 4.19 | keep the v5.21.2 Manual pin; approve only the 5.21.2 InstallPlan |
 | `drgitopsapp-jdbc-system` failed with missing `JdbcCfg` kind | JDBC app synced before MAS config CRDs existed | run `sync-jdbc-config.sh`; the app is now manual/gated |
-| `grafana-drroc4` failed with missing Grafana kind | Grafana operand synced before Grafana CRDs existed | run `sync-grafana.sh`; the app is now manual/gated |
 | No MAS config deploys | `generator.repo_url` ≠ real repo | fix the URL in `gitops/envs/<cluster>/common.yaml`, re-sync account-root |
 | Mongo/SLS Cfg "certificates" shape error | hand-edited rendered output | re-render `mas-config-repo`; never hand-edit `mas/<cluster>/` |

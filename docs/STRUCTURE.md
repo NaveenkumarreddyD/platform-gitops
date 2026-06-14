@@ -9,18 +9,18 @@ bootstrap/    DAY-0 bootstrap (imperative, once per cluster) — the ONLY manual
               repo-server with the AVP sidecar, then applies the gitops root. ArgoCD owns the rest.
 gitops/       APP-OF-APPS GENERATOR (self-healing). One file per Application:
                 templates/root-application.yaml   the app-of-apps root (apply.sh applies ONLY this)
-                templates/app-10-vault.yaml ... app-60-grafana.yaml   the 9 children (wave-ordered)
-              The root app points at path: gitops, so ArgoCD renders this chart -> generates the 9
+                templates/app-10-vault.yaml ... app-60-grafana.yaml   children (wave-ordered)
+              The root app points at path: gitops, so ArgoCD renders this chart -> generates the
               children (and re-renders the root app = self-managing). Edit <env>-*.yaml to change what
               deploys; ArgoCD reconciles. Values: values.yaml (shared base, auto-loaded) +
                 envs/<cluster>/common.yaml (cluster-scope) + envs/<cluster>/values.yaml (instance).
               One folder per cluster under envs/ — scales cleanly; no flat sprawl.
 workloads/    The actual Helm charts the Applications point at:
-  operators/    grafana-operator (OLM, pinned v5.21.2 for OCP < 4.19)
   mongodb/      MongoDBCommunity CR (3x, 6.0.12, 20Gi+20Gi, TLS+SCRAM)  [operator via Helm chart]
   jdbc/         external Oracle JdbcCfg
   vault-sync/   registration-sync Jobs (mongo gate + SLS/DRO -> Vault)
-  grafana/      Grafana CR + Thanos datasource + dashboards
+  operators/    optional OLM operator installs; Grafana is disabled by default
+  grafana/      optional Grafana CR + Thanos datasource + dashboards
 scripts/, vault-auth/, docs/
 ```
 
@@ -32,7 +32,7 @@ bootstrap/apply.sh <env>
 platform-<env>  (now ArgoCD-managed, self-heals)
   -> renders gitops/ -> GENERATES all 9 child Applications, sync-wave ordered:
      -20 root | -10 AVP | 10 Vault | 19 Mongo SCC prereq | 20 Mongo operator(Helm) | 25 Mongo CR | 28 mongo->Vault gate
-     30 account-root (manual gate for Core/Manage) | 40 JDBC | 50 SLS/DRO sync (manual after SLS exists) | 55 grafana-operator | 60 Grafana
+     30 account-root (manual gate for Core/Manage) | 40 JDBC | 50 SLS/DRO sync (manual after SLS exists)
 ```
 
 `ibm-mas-account-root` is intentionally generated without an automated sync policy by default.
@@ -43,6 +43,6 @@ time out before account-root creates SLS.
 
 ## Add a cluster/env
 1. `gitops/envs/<cluster>/`: copy `envs/_example/` -> `common.yaml` (clusterId, storageClass, vault.host) + `values.yaml` (instanceId, mongo ns, jdbc, dro, sls).
-2. (operators + grafana need NOTHING per-cluster — they render from their own values.yaml.)
+2. Optional components such as Grafana are controlled by `enable.*` values.
 3. `mas-config-repo`: add `envs/<cluster>.env` + `render.py <cluster>`.
 4. `./bootstrap/apply.sh <env>` on that cluster. No template edits.

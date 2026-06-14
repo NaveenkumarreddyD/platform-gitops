@@ -47,7 +47,7 @@ enable:
   mongodb: true
   jdbc: true
   registrationSync: true
-  grafana: true
+  grafana: false
 
 # duplicates owned by app-of-apps — keep off here
 
