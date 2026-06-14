@@ -32,15 +32,19 @@ done
 
 echo "== required secret inputs =="
 [[ -n "${VAULT_TOKEN:-}" ]] && ok "VAULT_TOKEN exported" || no "export VAULT_TOKEN first"
-[[ -n "${IBM_ENTITLEMENT_KEY:-}" ]] && ok "IBM_ENTITLEMENT_KEY exported" || no "export IBM_ENTITLEMENT_KEY"
-[[ -n "${MAS_LICENSE_FILE:-}" && -f "${MAS_LICENSE_FILE:-}" ]] && ok "MAS_LICENSE_FILE exists" || no "MAS_LICENSE_FILE missing or file not found"
-[[ -n "${JDBC_USERNAME:-}" ]] && ok "JDBC_USERNAME exported" || no "export JDBC_USERNAME"
-[[ -n "${JDBC_PASSWORD:-}" ]] && ok "JDBC_PASSWORD exported" || no "export JDBC_PASSWORD"
-[[ -n "${JDBC_URL:-}" ]] && ok "JDBC_URL exported" || no "export JDBC_URL"
-if [[ -n "${JDBC_CA_CRT:-}" ]]; then
-  [[ -f "$JDBC_CA_CRT" ]] && ok "JDBC_CA_CRT exists" || no "JDBC_CA_CRT file not found"
+if [[ "${CHECK_SECRET_INPUTS:-true}" =~ ^([Ff][Aa][Ll][Ss][Ee]|0|[Nn][Oo])$ ]]; then
+  warn "static secret input checks skipped; resume mode expects secrets already loaded in Vault"
 else
-  warn "JDBC_CA_CRT unset; OK for non-SSL JDBC"
+  [[ -n "${IBM_ENTITLEMENT_KEY:-}" ]] && ok "IBM_ENTITLEMENT_KEY exported" || no "export IBM_ENTITLEMENT_KEY"
+  [[ -n "${MAS_LICENSE_FILE:-}" && -f "${MAS_LICENSE_FILE:-}" ]] && ok "MAS_LICENSE_FILE exists" || no "MAS_LICENSE_FILE missing or file not found"
+  [[ -n "${JDBC_USERNAME:-}" ]] && ok "JDBC_USERNAME exported" || no "export JDBC_USERNAME"
+  [[ -n "${JDBC_PASSWORD:-}" ]] && ok "JDBC_PASSWORD exported" || no "export JDBC_PASSWORD"
+  [[ -n "${JDBC_URL:-}" ]] && ok "JDBC_URL exported" || no "export JDBC_URL"
+  if [[ -n "${JDBC_CA_CRT:-}" ]]; then
+    [[ -f "$JDBC_CA_CRT" ]] && ok "JDBC_CA_CRT exists" || no "JDBC_CA_CRT file not found"
+  else
+    warn "JDBC_CA_CRT unset; OK for non-SSL JDBC"
+  fi
 fi
 
 echo "== vault =="

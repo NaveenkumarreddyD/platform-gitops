@@ -72,11 +72,12 @@ Options:
 | `--yes` | non-interactive (auto-confirm the rendered-config commit/push) |
 | `--no-push` | render + commit locally, don't push (you push manually) |
 | `--skip-bas` | don't enable BAS/DRO Suite config |
-| `--init-vault` | run `init-vault.sh` first (still saves/prints keys) |
+| `--init-vault` | run `init-vault.sh` first, then stop so you can export the printed Vault token |
 | `--from <step>` | resume at `deploy\|prereqs\|account-root\|jdbc\|registration\|bas\|verify` |
 | `--until <step>` | stop after a step — `--until prereqs` reproduces the old `install-gated.sh` |
 
 Idempotent: every sub-step is safe to re-run, so a failed run resumes with `--from`.
+Resume mode skips local static-secret input checks because those values should already be loaded in Vault.
 
 ## Vault auto-unseal (opt-in)
 

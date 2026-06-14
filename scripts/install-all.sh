@@ -69,18 +69,25 @@ should_run(){ # arg: step name -> true if within [START_IDX, END_IDX]
 }
 banner(){ printf '\n############################################################\n# %s\n############################################################\n' "$*"; }
 
-[[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
-
 # ----- optional: initialize + unseal Vault -----
 if [[ "$DO_INIT" == 1 ]]; then
   banner "0. Initialize + unseal Vault"
   bash scripts/init-vault.sh
-  echo ">> NOTE: if init-vault printed a fresh root token, re-export VAULT_TOKEN before continuing."
+  if [[ -z "${VAULT_TOKEN:-}" ]]; then
+    echo ">> init-vault completed. Export the printed root/admin token, then re-run install-all without --init-vault." >&2
+    exit 0
+  fi
 fi
+
+[[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
 
 # ----- 1. env validation -----
 banner "1. Environment validation"
-./scripts/check-env.sh "$ENVFILE"
+if should_run deploy; then
+  CHECK_SECRET_INPUTS=true ./scripts/check-env.sh "$ENVFILE"
+else
+  CHECK_SECRET_INPUTS=false ./scripts/check-env.sh "$ENVFILE"
+fi
 
 # ----- 2. deploy: vault auth + load secrets + render + commit/push -----
 if should_run deploy; then
