@@ -27,8 +27,12 @@ spec:
       values: |
         avp: { name: argocd-vault-plugin-helm, secret: argocd-vault-plugin-credentials, values_varname: HELM_VALUES }
         account: { id: {{ .Values.account.id }} }
-        source:    { repo_url: {{ .Values.source.repo_url }},    revision: {{ .Values.source.revision }} }
-        generator: { repo_url: {{ .Values.generator.repo_url }}, revision: {{ .Values.generator.revision }} }
+        source:
+          repo_url: {{ .Values.source.repo_url | quote }}
+          revision: {{ .Values.source.revision | quote }}
+        generator:
+          repo_url: {{ .Values.generator.repo_url | quote }}
+          revision: {{ .Values.generator.revision | quote }}
         argo:
           namespace: {{ .Values.argoNamespace }}
           projects: { rootapps: {{ .Values.project }}, apps: {{ .Values.project }} }

@@ -25,6 +25,7 @@ MONGO_HOST="${MONGO_HOST:-${INSTANCE_ID}-mongo-svc.${MONGO_NS:-mongo-${INSTANCE_
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
 vrun(){ oc exec -n "$VAULT_NS" "$VAULT_POD" -- sh -c "export VAULT_ADDR=$VADDR VAULT_TOKEN='$VAULT_TOKEN'; $*"; }
 vget(){ vrun "vault kv get -field='$2' $1" 2>/dev/null || true; }
+b64(){ base64 | tr -d '\r\n'; }
 gen(){
   local len="${1:-24}" out=""
   while (( ${#out} < len )); do
@@ -59,8 +60,8 @@ MONGO_PASSWORD="${MONGO_PASSWORD:-$(vget "$IPREFIX/mongo" password)}"; MONGO_PAS
 SLS_MONGO_USERNAME="${SLS_MONGO_USERNAME:-slsmongo}"
 SLS_MONGO_PASSWORD="${SLS_MONGO_PASSWORD:-$(vget "$IPREFIX/sls-mongo" password)}"; SLS_MONGO_PASSWORD="${SLS_MONGO_PASSWORD:-$(gen 24)}"
 
-ENC="$(printf 'cp:%s' "$IBM_ENTITLEMENT_KEY" | base64 -w0)"
-DOCKERCFG="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' "$ENC" | base64 -w0)"
+ENC="$(printf 'cp:%s' "$IBM_ENTITLEMENT_KEY" | b64)"
+DOCKERCFG="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' "$ENC" | b64)"
 vrun "vault kv put $PREFIX/entitlement image_pull_secret_b64='$DOCKERCFG'"
 putfile "$MAS_LICENSE_FILE" mas-license.dat
 vrun "vault kv put $IPREFIX/license license_id='$MAS_LICENSE_ID' license_file=@/tmp/mas-license.dat; rm -f /tmp/mas-license.dat"
