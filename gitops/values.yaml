@@ -3,13 +3,13 @@ rootOnly: false   # apply.sh sets =true to emit ONLY the root app; ArgoCD leaves
 project: mas
 argoNamespace: openshift-gitops
 
-platform:  { repo_url: https://gitlab.lac1.biz/gitops/platform-gitops.git, revision: main }
-source:    { repo_url: https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git,   revision: "8.0.0" }
-generator: { repo_url: https://gitlab.lac1.biz/gitops/mas-gitops-config.git, revision: main }
+platform:  { repo_url: "https://github.com/NaveenkumarreddyD/platform-gitops.git", revision: main }
+source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.0.0" }
+generator: { repo_url: "https://github.com/NaveenkumarreddyD/mas-config-repo.git", revision: main }
 
 account: { id: mas }
 storageClass: isilon
-images: { oc: registry.redhat.io/openshift4/ose-cli:latest, vault: hashicorp/vault:1.18 }
+images: { oc: "registry.redhat.io/openshift4/ose-cli:latest", vault: "hashicorp/vault:1.18" }
 
 vault:
   enabled: true
@@ -36,7 +36,7 @@ accountRoot: { autoSync: false, clusterAdminRole: true, applicationAdminRole: tr
 registrationSync: { autoSync: false }   # sync manually after account-root creates SLS/DRO runtime values
 grafana: { namespace: grafana }
 operatorsNamespace: platform-operators
-mongoOperator: { repo: https://mongodb.github.io/helm-charts, chart: community-operator, version: "0.9.0" }   # MongoDB Community Operator (supports mongod 6.0.12)
+mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: community-operator, version: "0.9.0" }   # MongoDB Community Operator (supports mongod 6.0.12)
 
 # which Applications to emit
 enable:

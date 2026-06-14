@@ -1,4 +1,4 @@
-# wave 30 — IBM MAS account-root (IBM mirror; deploys Suite/Manage from mas-gitops-config)
+# wave 30 — IBM MAS account-root (IBM mirror; deploys Suite/Manage from mas-config-repo)
 # Default is manual sync: this is the gate after Vault/Mongo/secrets are ready.
 {{- if and (not .Values.rootOnly) .Values.enable.accountRoot }}
 ---
@@ -16,7 +16,9 @@ metadata:
 spec:
   revisionHistoryLimit: 10
   project: {{ .Values.project }}
-  destination: { namespace: {{ .Values.argoNamespace }}, server: https://kubernetes.default.svc }
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.argoNamespace }}
   source:
     repoURL: {{ .Values.source.repo_url | quote }}
     targetRevision: {{ .Values.source.revision | quote }}

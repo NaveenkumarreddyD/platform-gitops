@@ -13,7 +13,9 @@ metadata:
 spec:
   revisionHistoryLimit: 10
   project: {{ .Values.project }}
-  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.operatorsNamespace }} }
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.operatorsNamespace }}
   source:
     repoURL: {{ .Values.platform.repo_url | quote }}
     targetRevision: {{ .Values.platform.revision | quote }}

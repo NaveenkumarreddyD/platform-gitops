@@ -29,7 +29,7 @@ export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID
 
 # 3. ONE command: secrets -> render -> Mongo -> account-root -> Grafana approve ->
 #    SLS/DRO registration -> BAS -> verify (each step waits for its precondition):
-./scripts/install-all.sh --yes ../mas-gitops-config/envs/<cluster>.env
+./scripts/install-all.sh --yes ../mas-config-repo/envs/<cluster>.env
 ```
 Prerequisites-only (old `install-gated.sh` behaviour): `./scripts/install-all.sh --until prereqs <env>`.
 Resume after a transient failure: `./scripts/install-all.sh --from registration <env>`.

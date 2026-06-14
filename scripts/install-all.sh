@@ -6,8 +6,8 @@ set -euo pipefail
 # Chains every step from loaded-Vault to a verified platform, waiting for each
 # async precondition along the way (the individual scripts already block on
 # MongoDB/SLS/DRO readiness). This collapses the old multi-command hand-off
-# (deploy -> prepare-prereqs -> sync-mas-account-root -> grafana approve ->
-# sync-runtime-registration -> enable-bas-config -> verify) into a single
+# (deploy -> prepare-prereqs -> sync-mas-account-root -> sync-jdbc-config ->
+# sync-grafana -> sync-runtime-registration -> enable-bas-config -> verify) into a single
 # command, WITHOUT removing the safety waits.
 #
 # Prerequisites (same as before):
@@ -18,15 +18,15 @@ set -euo pipefail
 #       JDBC_USERNAME, JDBC_PASSWORD, JDBC_URL  (+ JDBC_CA_CRT if SSL)
 #
 # Usage:
-#   ./scripts/install-all.sh [options] ../mas-gitops-config/envs/drroc4.env
+#   ./scripts/install-all.sh [options] ../mas-config-repo/envs/drroc4.env
 #
 # Options:
 #   --yes            non-interactive: auto-confirm config commits/pushes
 #   --no-push        render + commit locally but do not push (implies manual push)
 #   --skip-bas       do not enable BAS/DRO Suite config even if DRO is present
 #   --init-vault     run scripts/init-vault.sh first (still prints/saves keys)
-#   --from <step>    resume at a step: deploy|prereqs|account-root|grafana|
-#                    registration|bas|verify
+#   --from <step>    resume at a step: deploy|prereqs|account-root|jdbc|
+#                    grafana|registration|bas|verify
 #   --until <step>   stop AFTER this step (e.g. --until prereqs reproduces the
 #                    old install-gated.sh: prerequisites only, MAS not started)
 #   -h, --help       show this help
@@ -57,7 +57,7 @@ set -a; . "$ENVFILE"; set +a
 DRO_NS="${DRO_NAMESPACE:-ibm-software-central}"
 
 # step ordering for --from resume
-STEPS=(deploy prereqs account-root grafana registration bas verify)
+STEPS=(deploy prereqs account-root jdbc grafana registration bas verify)
 START_IDX=0
 END_IDX=$(( ${#STEPS[@]} - 1 ))
 idx_of(){ local t="$1"; for i in "${!STEPS[@]}"; do [[ "${STEPS[$i]}" == "$t" ]] && { echo "$i"; return 0; }; done; return 1; }
@@ -100,24 +100,30 @@ if should_run account-root; then
   ./scripts/sync-mas-account-root.sh "$ENVFILE"
 fi
 
-# ----- 5. approve pinned Grafana InstallPlan -----
-if should_run grafana; then
-  banner "5. Approve pinned Grafana operator InstallPlan"
-  ./scripts/approve-grafana-installplan.sh || echo ">> Grafana approval deferred (operator not resolved yet)."
+# ----- 5. sync locally-owned JDBC config after MAS CRDs exist -----
+if should_run jdbc; then
+  banner "5. Sync JDBC config after MAS CRDs exist"
+  ./scripts/sync-jdbc-config.sh "$ENVFILE"
 fi
 
-# ----- 6. SLS/DRO runtime registration -> Vault -----
+# ----- 6. approve pinned Grafana InstallPlan and sync Grafana after CRDs exist -----
+if should_run grafana; then
+  banner "6. Approve pinned Grafana operator and sync Grafana"
+  ./scripts/sync-grafana.sh "$ENVFILE" || echo ">> Grafana sync deferred; run scripts/app-diagnostics.sh $ENVFILE for details."
+fi
+
+# ----- 7. SLS/DRO runtime registration -> Vault -----
 if should_run registration; then
-  banner "6. Sync SLS/DRO runtime registration into Vault"
+  banner "7. Sync SLS/DRO runtime registration into Vault"
   ./scripts/sync-runtime-registration.sh "$ENVFILE"
 fi
 
-# ----- 7. enable BAS/DRO Suite config (only if DRO present) -----
+# ----- 8. enable BAS/DRO Suite config (only if DRO present) -----
 if should_run bas; then
   if [[ "$SKIP_BAS" == 1 ]]; then
-    banner "7. BAS/DRO Suite config — SKIPPED (--skip-bas)"
+    banner "8. BAS/DRO Suite config — SKIPPED (--skip-bas)"
   else
-    banner "7. Enable BAS/DRO Suite config"
+    banner "8. Enable BAS/DRO Suite config"
     if ./scripts/enable-bas-config.sh "${PASS_ARGS[@]}" "$ENVFILE"; then
       echo ">> BAS config enabled."
     else
@@ -127,10 +133,11 @@ if should_run bas; then
   fi
 fi
 
-# ----- 8. verify -----
+# ----- 9. verify -----
 if should_run verify; then
-  banner "8. Verify platform"
+  banner "9. Verify platform"
   ./scripts/status-summary.sh "$ENVFILE" || true
+  ./scripts/app-diagnostics.sh "$ENVFILE" || true
   ./scripts/verify-platform.sh || true
 fi
 

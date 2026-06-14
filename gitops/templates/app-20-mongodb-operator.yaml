@@ -14,7 +14,9 @@ metadata:
 spec:
   revisionHistoryLimit: 10
   project: {{ .Values.project }}
-  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.mongoNs" . }} }
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ include "gitops.mongoNs" . }}
   source:
     repoURL: {{ .Values.mongoOperator.repo }}
     chart: {{ .Values.mongoOperator.chart }}

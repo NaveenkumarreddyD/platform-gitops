@@ -21,7 +21,9 @@ spec:
       valueFiles:
         - envs/{{ .Values.clusterId }}/common.yaml
         - envs/{{ .Values.clusterId }}/values.yaml
-  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.argoNamespace }} }
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.argoNamespace }}
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     retry:

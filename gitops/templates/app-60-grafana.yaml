@@ -6,21 +6,25 @@ kind: Application
 metadata:
   name: grafana-{{ .Values.clusterId }}
   namespace: {{ .Values.argoNamespace }}
-  labels: { app.kubernetes.io/part-of: mas-platform }
-  annotations: { argocd.argoproj.io/sync-wave: "60" }
+  labels:
+    app.kubernetes.io/part-of: mas-platform
+    mas.ibm.com/manual-gate: grafana-crds
+  annotations:
+    argocd.argoproj.io/sync-wave: "60"
+    mas.ibm.com/manual-sync-reason: "Sync after the pinned Grafana operator InstallPlan is approved and CRDs exist"
   finalizers: [ resources-finalizer.argocd.argoproj.io ]
 spec:
   revisionHistoryLimit: 10
   project: {{ .Values.project }}
-  destination: { server: https://kubernetes.default.svc, namespace: {{ .Values.grafana.namespace }} }
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.grafana.namespace }}
   source:
     repoURL: {{ .Values.platform.repo_url | quote }}
     targetRevision: {{ .Values.platform.revision | quote }}
     path: workloads/grafana
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
-    retry:
-      limit: 5
-      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
     syncOptions: [ "CreateNamespace=true" ]
+  # Intentionally manual. scripts/sync-grafana.sh approves the pinned operator
+  # InstallPlan, waits for grafana.integreatly.org CRDs, then syncs this app.
 {{- end }}

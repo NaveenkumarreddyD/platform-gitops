@@ -1,0 +1,16 @@
+# Example only. Do NOT commit a real token.
+# Use this only if the GitHub repositories are private. Public repositories do
+# not need an Argo CD repo credential secret.
+apiVersion: v1
+kind: Secret
+metadata:
+  name: github-gitops-repo-creds
+  namespace: openshift-gitops
+  labels:
+    argocd.argoproj.io/secret-type: repo-creds
+type: Opaque
+stringData:
+  type: git
+  url: https://github.com/NaveenkumarreddyD
+  username: CHANGE_ME_GITHUB_USERNAME
+  password: CHANGE_ME_GITHUB_TOKEN

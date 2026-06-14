@@ -63,7 +63,7 @@ export VAULT_TOKEN=<root/admin>
 export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID=... \
        JDBC_USERNAME=... JDBC_PASSWORD=... JDBC_URL='jdbc:oracle:thin:@//host:1521/SVC'
 
-./scripts/install-all.sh --yes ../mas-gitops-config/envs/drroc4.env
+./scripts/install-all.sh --yes ../mas-config-repo/envs/drroc4.env
 ```
 
 Options:
@@ -109,6 +109,6 @@ instead and leave `enable.vaultUnseal: false`. See Appendix A of `SETUP-GUIDE.md
 
 ## Irreducible manual seams
 
-1. **GitLab repo token** — a credential; supply once in `bootstrap/00-prereqs/repo-creds/`.
+1. **Private repo token** — only needed when the GitHub repos are private; supply once in `bootstrap/00-prereqs/repo-creds/`.
 2. **Vault root/unseal keys capture** — `init-vault.sh` generates them; a human must store them
    securely. Auto-unseal then handles subsequent restarts, but first capture stays manual.

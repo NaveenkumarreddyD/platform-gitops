@@ -1,7 +1,7 @@
 # MAS GitOps — Complete Setup Guide (drroc4, greenfield)
 
 End-to-end bring-up of a **greenfield** cluster with `platform-gitops` (the engine + platform
-workloads) and `mas-gitops-config` (the MAS CRs). Reflects the current state: 3-tier layout
+workloads) and `mas-config-repo` (the MAS CRs). Reflects the current state: 3-tier layout
 (`bootstrap` / `gitops` / `workloads`), self-managing root, dedicated per-instance MongoDB,
 Grafana operator pinned for **OCP 4.18**, and in-cluster Vault (VM-Vault deltas in Appendix A).
 
@@ -22,13 +22,12 @@ Sections 0–8 are the detailed reference. For a clean cluster the whole bring-u
 
 ```bash
 cd platform-gitops
-# [seam 1] fill the GitLab group token:
-#   cp bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.example.yaml \
-#      bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml   (+ real url/token)
+# [gate 1] if the GitHub repos are private, create Argo CD repo credentials
+# in bootstrap/00-prereqs/repo-creds/. Public repos need no repo credential.
 
 bash bootstrap/apply.sh drroc4                 # prereqs + AVP sidecar + root app (generates children)
 
-# [seam 2] init + unseal Vault (3-node raft) — one helper does all nodes, prints the token.
+# [gate 2] init + unseal Vault (3-node raft) — one helper does all nodes, prints the token.
 # --store-k8s-secret also seeds the auto-unseal keys Secret so future restarts self-unseal.
 bash scripts/init-vault.sh --store-k8s-secret
 export VAULT_TOKEN=<root_token_it_prints>
@@ -37,8 +36,8 @@ export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID
 
 # ONE command does the rest, each step waiting for its precondition:
 #   secrets -> render/push -> Mongo prereqs + Mongo CA -> account-root (Core/SLS/Manage) ->
-#   approve pinned Grafana InstallPlan -> SLS/DRO registration -> BAS -> verify.
-bash scripts/install-all.sh --yes ../mas-gitops-config/envs/drroc4.env
+#   gated JDBC config -> gated Grafana -> SLS/DRO registration -> BAS -> verify.
+bash scripts/install-all.sh --yes ../mas-config-repo/envs/drroc4.env
 
 oc get applications -n openshift-gitops -w     # watch it converge in wave order
 ```
@@ -64,18 +63,22 @@ Have ready:
 - IBM entitlement key (`IBM_ENTITLEMENT_KEY`)
 - MAS license file (`license.dat`) and its License ID
 - Oracle JDBC: username / password / URL (non-SSL here; `jdbc.sslEnabled: false`)
-- Both repos pushed to GitLab and reachable by ArgoCD's repo-server.
+- Repos reachable by ArgoCD's repo-server:
+  `https://github.com/NaveenkumarreddyD/platform-gitops.git`,
+  `https://github.com/NaveenkumarreddyD/mas-config-repo.git`, and
+  `https://github.com/ibm-mas/gitops.git`.
 
 ---
 
 ## 1. Prepare credentials (the only thing to fill in before bootstrap)
 
-Copy the repo-creds example to a real file and add your GitLab token so ArgoCD can pull the repos:
+If your GitHub repos are private, add an Argo CD repo credential secret before bootstrap.
+Public repos do not need this step. The old GitLab credential example is retained only as a template:
 ```bash
 cd platform-gitops
 cp bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.example.yaml \
    bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml
-$EDITOR bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml      # real URL + token
+$EDITOR bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.yaml      # convert URL/token for your GitHub org if needed
 ```
 Everything else day-0 — CA trust, RBAC, the `mas` AppProject, and the **full AVP enablement**
 (CMP plugin, Vault credentials, and the repo-server sidecar patch; the Vault reviewer grant is done by setup-vault-auth.sh) — lives in
@@ -88,10 +91,12 @@ retry until then.
 ## 2. Configure platform-gitops (edit, commit, push — before bootstrap)
 
 **2.1 `gitops/values.yaml` — verify repo defaults:**
-- `generator.repo_url:` must point to your **actual** config repo. The default in this repo is
-  `…/mas-gitops-config.git`; update it only if your GitLab project uses a different name.
+- `generator.repo_url:` must point to your **actual** config repo:
+  `https://github.com/NaveenkumarreddyD/mas-config-repo.git`.
   If this URL is wrong, `account-root` globs an empty repo and no MAS config deploys.
-- Confirm `platform.repo_url` / `source.repo_url` point at your GitLab mirrors.
+- Confirm `platform.repo_url` points at `NaveenkumarreddyD/platform-gitops.git`.
+- Confirm `source.repo_url` points at IBM's official `https://github.com/ibm-mas/gitops.git`
+  with the pinned `source.revision`.
 
 (The old `repoServerServiceAccount` knob is gone — the token-review RBAC in `bootstrap/00-prereqs/`
 already binds the correct `openshift-gitops-argocd-repo-server` SA.)
@@ -127,14 +132,18 @@ Applications plus prerequisite resources and self-heals them. Sync-wave order:
 
 ```
 -20 platform-drroc4 (root)   -10 AVP config   10 Vault   19 Mongo SCC prereq
- 20 Mongo operator (Helm)   25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)   40 JDBC
- 50 SLS/DRO sync (manual after SLS/DRO exist)   55 grafana-operator   60 Grafana
+ 20 Mongo operator (Helm)   25 Mongo CR   28 mongo→Vault gate   30 account-root (manual)
+ 40 JDBC Application (manual after MAS config CRDs exist)
+ 50 SLS/DRO sync (manual after SLS/DRO exist)
+ 55 grafana-operator   60 Grafana Application (manual after Grafana CRDs exist)
 ```
-Early waves (AVP, Vault) go first. The secret-consuming waves (Mongo CR 25, JDBC 40, …) will sit
+Early waves (AVP, Vault) go first. Secret-consuming automated waves such as Mongo CR 25 can sit
 in `ComparisonError`/retry until Vault is initialized and loaded in §4–§5 — expected.
+JDBC and the Grafana operand are not automated; their scripts sync them only after the CRDs exist.
 `ibm-mas-account-root` is created by the root app but has no automated sync policy by default, so
-MAS Core/SLS/Manage do not start until you manually sync it. `vault-registration-sync-*` is also
-manual by default; sync it after SLS initializes.
+MAS Core/SLS/Manage do not start until you manually sync it. The JDBC and Grafana operand
+Applications are also manual because their CRs must not sync before their operators register CRDs.
+`vault-registration-sync-*` is manual by default; sync it after SLS initializes.
 
 ```bash
 oc get applications -n openshift-gitops
@@ -172,38 +181,38 @@ export VAULT_TOKEN='<vault admin>'
 export IBM_ENTITLEMENT_KEY='...'           \
        MAS_LICENSE_FILE='/path/license.dat' MAS_LICENSE_ID='...' \
        JDBC_USERNAME='...' JDBC_PASSWORD='...' JDBC_URL='jdbc:oracle:thin:@//host:1521/SVC'
-./scripts/load-secrets.sh ../mas-gitops-config/envs/drroc4.env
-./scripts/preflight-vault.sh ../mas-gitops-config/envs/drroc4.env    # sls CA WARN is normal pre-sync
+./scripts/load-secrets.sh ../mas-config-repo/envs/drroc4.env
+./scripts/preflight-vault.sh ../mas-config-repo/envs/drroc4.env    # sls CA WARN is normal pre-sync
 ```
 
 After loading, let `prepare-prereqs.sh` restart the repo-server, sync/refresh the Mongo prerequisite
 Applications, wait for MongoDB to become Running, and publish the Mongo CA:
 ```bash
-bash scripts/prepare-prereqs.sh ../mas-gitops-config/envs/drroc4.env
+bash scripts/prepare-prereqs.sh ../mas-config-repo/envs/drroc4.env
 ```
 
 ---
 
-## 6. Deploy MAS config (render + commit `mas-gitops-config`)
+## 6. Deploy MAS config (render + commit `mas-config-repo`)
 
 `account-root` (wave 30) discovers each `mas/<cluster>/` directory in the config repo and deploys
 it after you manually sync `ibm-mas-account-root`. So you render + commit, wait for prerequisites,
 then sync account-root.
 
-**6.1 Fill `mas-gitops-config/envs/drroc4.env`** — the `CHANGE_ME`s: `CLUSTER_URL`, `MAS_DOMAIN`,
+**6.1 Fill `mas-config-repo/envs/drroc4.env`** — the `CHANGE_ME`s: `CLUSTER_URL`, `MAS_DOMAIN`,
 `SLS_MONGO_HOST`, DRO contact, etc. Channels/catalog are already pinned
 (`MAS_CHANNEL=8.11.x`, `MAS_APP_CHANNEL=8.7.x`, `SLS_CHANNEL=3.x`, catalog `v9-240625-amd64`),
 and `SHARED_CLUSTER_SKIP=` is empty so cert-manager + DRO render (greenfield — see note below).
 
 **6.2 Render + commit**
 ```bash
-cd ../mas-gitops-config
+cd ../mas-config-repo
 python3 render.py drroc4
 git add -A && git commit -m "drroc4 MAS config" && git push
 cd ../platform-gitops
 oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
-./scripts/preflight-vault.sh --phase full ../mas-gitops-config/envs/drroc4.env
-./scripts/sync-mas-account-root.sh ../mas-gitops-config/envs/drroc4.env
+./scripts/preflight-vault.sh --phase full ../mas-config-repo/envs/drroc4.env
+./scripts/sync-mas-account-root.sh ../mas-config-repo/envs/drroc4.env
 ```
 
 > **Greenfield note (changed from the old Ansible-coexistence model):** this cluster was wiped,
@@ -219,19 +228,25 @@ oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj
 ```bash
 oc get mongodbcommunity -n mongo-drgitops          # wait for Phase: Running
 export VAULT_TOKEN='<vault admin>'
-./scripts/sync-mongo-ca.sh ../mas-gitops-config/envs/drroc4.env   # writes mongo#ca.crt + sls-mongo#ca.crt, hard-refreshes
+./scripts/sync-mongo-ca.sh ../mas-config-repo/envs/drroc4.env   # writes mongo#ca.crt + sls-mongo#ca.crt, hard-refreshes
 ```
 
-**7.2 Approve the Grafana operator InstallPlan** (Manual pin for OCP < 4.19)
+**7.2 Sync JDBC after MAS config CRDs exist**
 ```bash
-oc get installplan -n platform-operators
-oc patch installplan <the-v5.21.2-plan> -n platform-operators --type merge -p '{"spec":{"approved":true}}'
-# Do NOT approve any v5.22.x plan until the cluster is on OCP >= 4.19.
+./scripts/sync-jdbc-config.sh ../mas-config-repo/envs/drroc4.env
 ```
+This waits for `jdbccfgs.config.mas.ibm.com` and then syncs `drgitopsapp-jdbc-system`.
 
-**7.3 SLS/DRO registration sync** (after `LicenseService` is Ready)
+**7.3 Approve the Grafana operator InstallPlan and sync Grafana**
 ```bash
-./scripts/sync-runtime-registration.sh ../mas-gitops-config/envs/drroc4.env
+./scripts/sync-grafana.sh ../mas-config-repo/envs/drroc4.env
+```
+This approves only `grafana-operator.v5.21.2`, waits for Grafana CRDs, then syncs `grafana-drroc4`.
+Do NOT approve any v5.22.x plan until the cluster is on OCP >= 4.19.
+
+**7.4 SLS/DRO registration sync** (after `LicenseService` is Ready)
+```bash
+./scripts/sync-runtime-registration.sh ../mas-config-repo/envs/drroc4.env
 ```
 If you point at a centralized/licensed SLS instead, load that SLS's `registration_key/url/ca` into
 `secret/mas/drroc4/drgitopsapp/sls` and skip this harvest step.
@@ -242,6 +257,7 @@ If you point at a centralized/licensed SLS instead, load that SLS's `registratio
 
 ```bash
 ./scripts/verify-platform.sh
+./scripts/app-diagnostics.sh ../mas-config-repo/envs/drroc4.env
 oc get applications -n openshift-gitops -o json | jq -r \
   '.items[] | select(.metadata.name|test("drroc4|drgitopsapp"))
    | "\(.metadata.name)\t\(.status.sync.status)\t\(.status.health.status)"' | column -t
@@ -255,10 +271,10 @@ Grafana route reachable.
 
 Hub setup (§1) is done once. Per new cluster:
 1. `gitops/envs/<cluster>/`: copy `_example/` to `common.yaml` + `values.yaml`.
-2. `mas-gitops-config/envs/<cluster>.env` (the ~6 values that differ).
+2. `mas-config-repo/envs/<cluster>.env` (the ~6 values that differ).
 3. `./bootstrap/apply.sh <env>` → Vault init/auth/load (§4–§5) → render+commit config (§6) → gates (§7).
 
-No template edits. `scripts/deploy.sh ../mas-gitops-config/envs/<cluster>.env` chains Vault auth,
+No template edits. `scripts/deploy.sh ../mas-config-repo/envs/<cluster>.env` chains Vault auth,
 secret loading, preflight, render, and config commit once the env file and secret material are ready.
 
 ---
@@ -303,5 +319,7 @@ repos already.
 | `license#license_file is base64-encoded` | license.dat was stored encoded | re-run `load-secrets.sh`; it stores raw license text |
 | CA error `InvalidByte(..,92)` | escaped `\n` PEM | re-store real multiline PEM via `update-vault-ca.sh` |
 | Grafana operator stuck Pending/Replacing | v5.22.x CRD on OCP < 4.19 | keep the v5.21.2 Manual pin; approve only the 5.21.2 InstallPlan |
-| No MAS config deploys | `generator.repo_url` ≠ real repo | fix the URL in `common-values.yaml`, re-sync account-root |
-| Mongo/SLS Cfg "certificates" shape error | hand-edited rendered output | re-render `mas-gitops-config`; never hand-edit `mas/<cluster>/` |
+| `drgitopsapp-jdbc-system` failed with missing `JdbcCfg` kind | JDBC app synced before MAS config CRDs existed | run `sync-jdbc-config.sh`; the app is now manual/gated |
+| `grafana-drroc4` failed with missing Grafana kind | Grafana operand synced before Grafana CRDs existed | run `sync-grafana.sh`; the app is now manual/gated |
+| No MAS config deploys | `generator.repo_url` ≠ real repo | fix the URL in `gitops/envs/<cluster>/common.yaml`, re-sync account-root |
+| Mongo/SLS Cfg "certificates" shape error | hand-edited rendered output | re-render `mas-config-repo`; never hand-edit `mas/<cluster>/` |

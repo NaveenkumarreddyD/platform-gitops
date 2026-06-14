@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # init-vault.sh — one-time: initialize (on vault-0) + unseal ALL raft nodes, save keys, print root token.
-# Irreducible MANUAL seam: the unseal keys + root token are sensitive and must be captured/stored by a
+# Irreducible MANUAL gate: the unseal keys + root token are sensitive and must be captured/stored by a
 # human (cannot be GitOps'd). Vault here is 3-node raft HA: vault-1/2 retry_join vault-0, then need
 # unsealing with the SAME keys. Defaults to 1 share / 1 threshold; override KEY_SHARES/KEY_THRESHOLD
 # for production split-key custody.
@@ -75,6 +75,6 @@ cat <<MSG
  Vault initialized + all $REPLICAS node(s) unsealed.
  Next (one command finishes the platform):
      export VAULT_TOKEN=$ROOT
-     bash scripts/deploy.sh ../mas-gitops-config/envs/drroc4.env
+     bash scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
 ============================================================
 MSG

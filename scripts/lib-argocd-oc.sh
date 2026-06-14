@@ -50,3 +50,54 @@ wait_app_synced_healthy() {
     sleep 10
   done
 }
+
+wait_app_synced_idle() {
+  local app="${1:?app name}" timeout="${2:-1200}" elapsed=0 sync="" op=""
+  while :; do
+    sync="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
+    op="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)"
+    [[ "$sync" == "Synced" && "$op" != "Running" ]] && {
+      echo ">> $app Synced/Idle"
+      return 0
+    }
+    (( elapsed += 10 ))
+    [[ "$elapsed" -ge "$timeout" ]] && {
+      echo "ERROR: timeout waiting for $app (sync=$sync operation=$op)" >&2
+      print_app_diagnostics "$app" || true
+      return 1
+    }
+    sleep 10
+  done
+}
+
+wait_crd() {
+  local crd="${1:?crd name}" timeout="${2:-1200}" elapsed=0
+  while :; do
+    oc get crd "$crd" >/dev/null 2>&1 && {
+      echo ">> CRD $crd is registered"
+      return 0
+    }
+    (( elapsed += 10 ))
+    [[ "$elapsed" -ge "$timeout" ]] && {
+      echo "ERROR: timeout waiting for CRD $crd" >&2
+      oc get crd | grep -Ei 'mas.ibm.com|sls.ibm.com|grafana.integreatly.org' || true
+      return 1
+    }
+    sleep 10
+  done
+}
+
+print_app_diagnostics() {
+  local app="${1:?app name}"
+  echo "== $app =="
+  oc get application "$app" -n "$ARGO_NS" \
+    -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,OP:.status.operationState.phase 2>/dev/null || return 0
+  echo "-- operation message --"
+  oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.operationState.message}{"\n"}' 2>/dev/null || true
+  echo "-- conditions --"
+  oc get application "$app" -n "$ARGO_NS" \
+    -o jsonpath='{range .status.conditions[*]}{.type}{" - "}{.message}{"\n"}{end}' 2>/dev/null || true
+  echo "-- resource results --"
+  oc get application "$app" -n "$ARGO_NS" \
+    -o jsonpath='{range .status.operationState.syncResult.resources[*]}{.kind}{"/"}{.name}{"  "}{.status}{"  "}{.message}{"\n"}{end}' 2>/dev/null || true
+}

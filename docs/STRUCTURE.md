@@ -4,7 +4,7 @@ Three tiers, one job each:
 
 ```
 bootstrap/    DAY-0 bootstrap (imperative, once per cluster) — the ONLY manual step. 00-prereqs/ =
-              GitLab CA, Argo RBAC, `mas` AppProject, repo creds, AND all AVP enablement (CMP
+              optional repo CA, Argo RBAC, `mas` AppProject, repo creds, AND all AVP enablement (CMP
               plugin, Vault creds, token-review RBAC). apply.sh applies those, patches the
               repo-server with the AVP sidecar, then applies the gitops root. ArgoCD owns the rest.
 gitops/       APP-OF-APPS GENERATOR (self-healing). One file per Application:
@@ -44,5 +44,5 @@ time out before account-root creates SLS.
 ## Add a cluster/env
 1. `gitops/envs/<cluster>/`: copy `envs/_example/` -> `common.yaml` (clusterId, storageClass, vault.host) + `values.yaml` (instanceId, mongo ns, jdbc, dro, sls).
 2. (operators + grafana need NOTHING per-cluster — they render from their own values.yaml.)
-3. `mas-gitops-config`: add `envs/<cluster>.env` + `render.py <cluster>`.
+3. `mas-config-repo`: add `envs/<cluster>.env` + `render.py <cluster>`.
 4. `./bootstrap/apply.sh <env>` on that cluster. No template edits.

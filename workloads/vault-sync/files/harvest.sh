@@ -22,14 +22,14 @@ if [ "$MODE" = "sls" ]; then
   echo ">> waiting for LicenseService Ready in $NS"
   i=0
   until {
-    initialized="$(oc get licenseservice -n "$NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
-    registration_key="$(oc get licenseservice -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
+    initialized="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
+    registration_key="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
     [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ]]
   }; do
     i=$((i+1)); [ "$i" -gt "$RETRIES" ] && { echo "timeout waiting for SLS Ready"; exit 1; }
     sleep "$INTERVAL"
   done
-  RK="$(oc get licenseservice -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
+  RK="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
   [ -z "$RK" ] && RK="$(oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.registrationKey}' 2>/dev/null || true)"
   [ -z "$RK" ] && { echo "ERROR: no SLS registrationKey in $NS"; exit 1; }
   URL="${SLS_URL_OVERRIDE:-https://sls.${NS}.svc.cluster.local}"

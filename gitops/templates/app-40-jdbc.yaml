@@ -6,13 +6,19 @@ kind: Application
 metadata:
   name: {{ .Values.instanceId }}-jdbc-system
   namespace: {{ .Values.argoNamespace }}
-  labels: { app.kubernetes.io/part-of: mas-platform }
-  annotations: { argocd.argoproj.io/sync-wave: "40" }
+  labels:
+    app.kubernetes.io/part-of: mas-platform
+    mas.ibm.com/manual-gate: mas-config-crds
+  annotations:
+    argocd.argoproj.io/sync-wave: "40"
+    mas.ibm.com/manual-sync-reason: "Sync after MAS Suite installs config.mas.ibm.com CRDs"
   finalizers: [ resources-finalizer.argocd.argoproj.io ]
 spec:
   revisionHistoryLimit: 10
   project: {{ .Values.project }}
-  destination: { server: https://kubernetes.default.svc, namespace: {{ include "gitops.coreNs" . }} }
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ include "gitops.coreNs" . }}
   source:
     repoURL: {{ .Values.platform.repo_url | quote }}
     targetRevision: {{ .Values.platform.revision | quote }}
@@ -23,15 +29,13 @@ spec:
         - name: HELM_VALUES
           value: |
             instance_id: {{ .Values.instanceId }}
+            cli_image_repo: {{ .Values.images.oc }}
             mas_config_name: {{ .Values.instanceId }}-jdbc-system
             jdbc_ssl_enabled: {{ .Values.jdbc.sslEnabled }}
             jdbc_url: "<path:{{ include "gitops.path" . }}/jdbc-system#jdbc_url>"
             jdbc_username: "<path:{{ include "gitops.path" . }}/jdbc-system#username>"
             jdbc_password: "<path:{{ include "gitops.path" . }}/jdbc-system#password>"
             jdbc_ca_crt: "<path:{{ include "gitops.path" . }}/jdbc-system#ca.crt>"
-  syncPolicy:
-    automated: { prune: true, selfHeal: true }
-    retry:
-      limit: 5
-      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+  # Intentionally manual. This chart creates JdbcCfg, whose CRD is installed by
+  # MAS Suite. scripts/sync-jdbc-config.sh gates on that CRD before syncing.
 {{- end }}

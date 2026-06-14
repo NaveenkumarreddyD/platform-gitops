@@ -5,10 +5,12 @@ metadata:
   namespace: openshift-gitops
 spec:
   description: MAS GitOps applications
-  # SOURCES — only these repos may be deployed from (match the repo_urls in gitops/values.yaml;
-  # the glob covers platform-gitops, ibm-mas-gitops, mas-gitops-config). Update the host if not GitLab.
+  # SOURCES — only these repos may be deployed from (match the repo_urls in gitops/values.yaml).
   sourceRepos:
-    - https://gitlab.lac1.biz/gitops/*
+    - https://github.com/NaveenkumarreddyD/platform-gitops.git
+    - https://github.com/NaveenkumarreddyD/mas-config-repo.git
+    - https://github.com/ibm-mas/gitops.git
+    - "https://gitlab.lac1.biz/gitops/*"
     - https://helm.releases.hashicorp.com        # Vault chart
     - https://mongodb.github.io/helm-charts       # MongoDB Community Operator chart
   # DESTINATIONS — in-cluster ONLY. This server lock is the guardrail that matters for this topology:
@@ -21,11 +23,11 @@ spec:
   #   oc get applications -n openshift-gitops \
   #     -o jsonpath='{range .items[*]}{.spec.destination.namespace}{"\n"}{end}' | sort -u
   destinations:
-    - { server: https://kubernetes.default.svc, namespace: '*' }
+    - { server: "https://kubernetes.default.svc", namespace: "*" }
   # RESOURCE KINDS — left open on purpose: MAS + its operators create a wide, hard-to-enumerate
   # set of cluster- and namespace-scoped kinds, and restricting these reliably blocks the install.
   # The real guardrails above (sources + in-cluster destinations) catch the dangerous mistakes.
   clusterResourceWhitelist:
-    - { group: '*', kind: '*' }
+    - { group: "*", kind: "*" }
   namespaceResourceWhitelist:
-    - { group: '*', kind: '*' }
+    - { group: "*", kind: "*" }

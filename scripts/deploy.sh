@@ -3,7 +3,7 @@ set -euo pipefail
 # One-command post-Vault deploy: configure Vault auth -> load static secrets -> static preflight
 # -> render config -> commit/push. It deliberately does NOT sync IBM MAS account-root.
 # Usage:  export VAULT_TOKEN=<root> (+ IBM_ENTITLEMENT_KEY/MAS_LICENSE_FILE/JDBC_* for load)
-#         ./scripts/deploy.sh [--yes] [--no-push] ../mas-gitops-config/envs/drroc4.env
+#         ./scripts/deploy.sh [--yes] [--no-push] ../mas-config-repo/envs/drroc4.env
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 ASSUME_YES=0
 NO_PUSH=0

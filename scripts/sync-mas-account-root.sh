@@ -10,6 +10,7 @@ echo ">> full Vault preflight before MAS account-root"
 
 echo ">> syncing ibm-mas-account-root"
 sync_app_oc ibm-mas-account-root false
-wait_app_synced_healthy ibm-mas-account-root 1800
+wait_app_synced_idle ibm-mas-account-root 1800
 
-echo ">> MAS account-root synced. Watch generated MAS Applications in $ARGO_NS."
+echo ">> MAS account-root sync completed. It may remain Progressing until SLS/DRO registration and gated config apps finish."
+echo ">> Next gated steps: scripts/sync-jdbc-config.sh, scripts/approve-grafana-installplan.sh, scripts/sync-grafana.sh, scripts/sync-runtime-registration.sh"

@@ -15,8 +15,17 @@ oc get application -n "$ARGO_NS" \
   "mongodb-ce-${INSTANCE_ID}" \
   "vault-sync-mongo-${INSTANCE_ID}" \
   "ibm-mas-account-root" \
+  "${INSTANCE_ID}-jdbc-system" \
+  "grafana-operator" \
+  "grafana-${CLUSTER_ID}" \
   "vault-registration-sync-${INSTANCE_ID}" \
   -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,OP:.status.operationState.phase 2>/dev/null || true
+
+echo
+echo "== Argo CD Applications needing attention =="
+oc get application -n "$ARGO_NS" \
+  -o custom-columns=NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status,OP:.status.operationState.phase \
+  | awk 'NR==1 || $2!="Synced" || $3!="Healthy" || $4=="Failed"' || true
 
 echo
 echo "== Vault =="
@@ -30,3 +39,7 @@ oc get pods -n "$MONGO_NS" 2>/dev/null || true
 echo
 echo "== MAS namespaces =="
 oc get ns 2>/dev/null | grep -E "mas-${INSTANCE_ID}|${MONGO_NS}" || true
+
+echo
+echo "== MAS API resources present =="
+oc api-resources 2>/dev/null | grep -Ei 'suites|manageapps|manageworkspaces|jdbccfgs|slscfgs|licenseservices' || true
