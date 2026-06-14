@@ -21,7 +21,8 @@ PREFIX="secret/${ACCOUNT_ID}/${CLUSTER_ID}"; IPREFIX="${PREFIX}/${INSTANCE_ID}"
 KV="${KV_MOUNT:-secret}"
 VAULT_NS="${VAULT_NS:-vault}"; VAULT_POD="${VAULT_POD:-vault-0}"; VADDR="${VADDR:-http://127.0.0.1:8200}"
 # Dedicated Mongo for THIS instance (created by GitOps; not the shared mas-mongo-ce):
-MONGO_HOST="${MONGO_HOST:-${INSTANCE_ID}-mongo-svc.${MONGO_NS:-mongo-${INSTANCE_ID}}.svc.cluster.local}"
+: "${MONGO_NS:?MONGO_NS must be set in the env file (e.g. MONGO_NS=mongo-drgitops) and MUST equal gitops/envs/<cluster>/values.yaml mongo.namespace}"
+MONGO_HOST="${MONGO_HOST:-${INSTANCE_ID}-mongo-svc.${MONGO_NS}.svc.cluster.local}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
 vrun(){ oc exec -n "$VAULT_NS" "$VAULT_POD" -- sh -c "export VAULT_ADDR=$VADDR VAULT_TOKEN='$VAULT_TOKEN'; $*"; }
 vget(){ vrun "vault kv get -field='$2' $1" 2>/dev/null || true; }

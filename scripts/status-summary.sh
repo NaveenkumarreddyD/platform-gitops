@@ -5,7 +5,7 @@ ENVFILE="${1:?usage: status-summary.sh <path/to/cluster.env>}"
 set -a; . "$ENVFILE"; set +a
 : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
 ARGO_NS="${ARGO_NS:-openshift-gitops}"
-MONGO_NS="${MONGO_NS:-mongo-${INSTANCE_ID}}"
+MONGO_NS="${MONGO_NS:?MONGO_NS must be set in the env file; it MUST equal gitops/envs/<cluster>/values.yaml mongo.namespace}"
 MONGO_CR="${MONGO_CR:-${INSTANCE_ID}-mongo}"
 
 echo "== Argo CD Applications =="

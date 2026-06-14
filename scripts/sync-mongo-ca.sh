@@ -7,7 +7,7 @@ ENVFILE="${1:?usage: sync-mongo-ca.sh <cluster.env>}"
 # shellcheck disable=SC1090
 set -a; . "$ENVFILE"; set +a
 : "${ACCOUNT_ID:?}"; : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
-MONGO_NS="${MONGO_NS:-mongo-${INSTANCE_ID}}"; MONGO_CR="${MONGO_CR:-${INSTANCE_ID}-mongo}"
+MONGO_NS="${MONGO_NS:?MONGO_NS must be set in the env file; it MUST equal gitops/envs/<cluster>/values.yaml mongo.namespace}"; MONGO_CR="${MONGO_CR:-${INSTANCE_ID}-mongo}"
 VAULT_NS="${VAULT_NS:-vault}"; VAULT_POD="${VAULT_POD:-vault-0}"; VADDR="${VADDR:-http://127.0.0.1:8200}"; KV="${KV_MOUNT:-secret}"
 ARGO_NS="${ARGO_NS:-openshift-gitops}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }

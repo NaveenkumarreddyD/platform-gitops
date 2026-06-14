@@ -32,6 +32,9 @@ if [ "$MODE" = "sls" ]; then
   RK="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
   [ -z "$RK" ] && RK="$(oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.registrationKey}' 2>/dev/null || true)"
   [ -z "$RK" ] && { echo "ERROR: no SLS registrationKey in $NS"; exit 1; }
+  # Assumes the IBM SLS operator creates a Service named "sls" on 443 in $NS.
+  # If the actual Service name/port differs (check: oc get svc -n $NS), set SLS_URL_OVERRIDE
+  # (or slsSync.urlOverride) to the correct in-cluster URL or the SLS Route host.
   URL="${SLS_URL_OVERRIDE:-https://sls.${NS}.svc.cluster.local}"
   printf '%s' "$RK"  > /work/registration_key
   printf '%s' "$URL" > /work/url

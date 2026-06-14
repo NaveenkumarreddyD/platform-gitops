@@ -28,7 +28,7 @@ slsSync:
   urlOverride: ""               # default: https://sls.<ns>.svc.cluster.local
 droSync:
   enabled: true
-  namespace: redhat-marketplace
+  namespace: ibm-software-central   # newer DRO ns (override per env via app templates)
   urlOverride: ""
   tokenSecret: ""               # optional explicit secret name holding the api key
   caSecret: ""                  # optional explicit secret name holding the CA

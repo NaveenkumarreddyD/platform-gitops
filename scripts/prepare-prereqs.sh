@@ -18,7 +18,7 @@ ENVFILE="${1:?usage: prepare-prereqs.sh <path/to/cluster.env>}"
 # shellcheck disable=SC1090
 set -a; . "$ENVFILE"; set +a
 : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
-MONGO_NS="${MONGO_NS:-mongo-${INSTANCE_ID}}"
+MONGO_NS="${MONGO_NS:?MONGO_NS must be set in the env file; it MUST equal gitops/envs/<cluster>/values.yaml mongo.namespace}"
 MONGO_CR="${MONGO_CR:-${INSTANCE_ID}-mongo}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
 

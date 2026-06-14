@@ -95,7 +95,17 @@ check_ca(){ # path field
 }
 
 echo "== mongo =="; check_creds "$IP/mongo" username password
-[[ -n "$(field "$IP/mongo" host)" ]] && ok "$IP/mongo#host" || no "$IP/mongo#host missing"
+mh="$(field "$IP/mongo" host)"
+if [[ -z "$mh" ]]; then no "$IP/mongo#host missing"
+else
+  msvc="${mh%%.*}"; mns="$(echo "$mh" | cut -d. -f2)"
+  if [[ "$PHASE" == "full" ]]; then
+    if oc get svc "$msvc" -n "$mns" >/dev/null 2>&1; then ok "$IP/mongo#host -> Service $mns/$msvc exists"
+    else no "$IP/mongo#host=$mh does NOT resolve to a Service (wrong namespace? check MONGO_NS vs gitops mongo.namespace)"; fi
+  else
+    ok "$IP/mongo#host=$mh (ns=$mns; Service existence deferred to --phase full)"
+  fi
+fi
 if [[ "$PHASE" == "full" ]]; then
   check_ca "$IP/mongo" ca.crt
 else

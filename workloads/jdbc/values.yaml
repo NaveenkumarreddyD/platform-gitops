@@ -1,7 +1,8 @@
 instance_id: drgitopsapp
 cli_image_repo: registry.redhat.io/openshift4/ose-cli:latest
 mas_config_name: drgitopsapp-jdbc-system
-workspace_id: drgitopswks
+# NOTE: this chart emits a SYSTEM-scoped JdbcCfg only (Manage binds `jdbc: system`),
+# so no workspace id is needed here.
 # ---- SSL toggle ----
 jdbc_ssl_enabled: false        # false = TCP/1521 (Ansible parity). true = TCPS/2484.
 # url: non-SSL EZConnect now; for TCPS use a full descriptor (PROTOCOL=TCPS)(PORT=2484) — see README.
