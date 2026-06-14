@@ -3,9 +3,9 @@ rootOnly: false   # apply.sh sets =true to emit ONLY the root app; ArgoCD leaves
 project: mas
 argoNamespace: openshift-gitops
 
-platform:  { repo_url: "https://github.com/NaveenkumarreddyD/platform-gitops.git", revision: main }
-source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.0.0" }
-generator: { repo_url: "https://github.com/NaveenkumarreddyD/mas-config-repo.git", revision: main }
+platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: main }
+source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git", revision: "8.0.0" }
+generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: main }
 
 account: { id: mas }
 storageClass: isilon

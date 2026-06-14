@@ -64,16 +64,16 @@ Have ready:
 - MAS license file (`license.dat`) and its License ID
 - Oracle JDBC: username / password / URL (non-SSL here; `jdbc.sslEnabled: false`)
 - Repos reachable by ArgoCD's repo-server:
-  `https://github.com/NaveenkumarreddyD/platform-gitops.git`,
-  `https://github.com/NaveenkumarreddyD/mas-config-repo.git`, and
-  `https://github.com/ibm-mas/gitops.git`.
+  `https://gitlab.lac1.biz/gitops/platform-gitops.git`,
+  `https://gitlab.lac1.biz/gitops/mas-gitops-config.git`, and
+  `https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git`.
 
 ---
 
 ## 1. Prepare credentials (the only thing to fill in before bootstrap)
 
-If your GitHub repos are private, add an Argo CD repo credential secret before bootstrap.
-Public repos do not need this step. The old GitLab credential example is retained only as a template:
+If your GitLab repos are private, add an Argo CD repo credential secret before bootstrap.
+Use the GitLab credential example as the template:
 ```bash
 cd platform-gitops
 cp bootstrap/00-prereqs/repo-creds/gitlab-group-repo-creds.example.yaml \
@@ -92,11 +92,11 @@ retry until then.
 
 **2.1 `gitops/values.yaml` — verify repo defaults:**
 - `generator.repo_url:` must point to your **actual** config repo:
-  `https://github.com/NaveenkumarreddyD/mas-config-repo.git`.
+  `https://gitlab.lac1.biz/gitops/mas-gitops-config.git`.
   If this URL is wrong, `account-root` globs an empty repo and no MAS config deploys.
-- Confirm `platform.repo_url` points at `NaveenkumarreddyD/platform-gitops.git`.
-- Confirm `source.repo_url` points at IBM's official `https://github.com/ibm-mas/gitops.git`
-  with the pinned `source.revision`.
+- Confirm `platform.repo_url` points at `https://gitlab.lac1.biz/gitops/platform-gitops.git`.
+- Confirm `source.repo_url` points at the internal mirror of IBM MAS GitOps,
+  `https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git`, with the pinned `source.revision`.
 
 (The old `repoServerServiceAccount` knob is gone — the token-review RBAC in `bootstrap/00-prereqs/`
 already binds the correct `openshift-gitops-argocd-repo-server` SA.)

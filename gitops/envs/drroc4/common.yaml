@@ -1,6 +1,6 @@
 clusterId: drroc4
 storageClass: isilon
 vault: { host: vault.apps.drroc4.lac1.biz }
-platform:  { repo_url: "https://github.com/NaveenkumarreddyD/platform-gitops.git", revision: main }
-source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.0.0" }
-generator: { repo_url: "https://github.com/NaveenkumarreddyD/mas-config-repo.git", revision: main }
+platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: main }
+source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git", revision: "8.0.0" }
+generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: main }

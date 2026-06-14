@@ -7,10 +7,9 @@ spec:
   description: MAS GitOps applications
   # SOURCES — only these repos may be deployed from (match the repo_urls in gitops/values.yaml).
   sourceRepos:
-    - https://github.com/NaveenkumarreddyD/platform-gitops.git
-    - https://github.com/NaveenkumarreddyD/mas-config-repo.git
-    - https://github.com/ibm-mas/gitops.git
-    - "https://gitlab.lac1.biz/gitops/*"
+    - https://gitlab.lac1.biz/gitops/platform-gitops.git
+    - https://gitlab.lac1.biz/gitops/mas-gitops-config.git
+    - https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git
     - https://helm.releases.hashicorp.com        # Vault chart
     - https://mongodb.github.io/helm-charts       # MongoDB Community Operator chart
   # DESTINATIONS — in-cluster ONLY. This server lock is the guardrail that matters for this topology:
