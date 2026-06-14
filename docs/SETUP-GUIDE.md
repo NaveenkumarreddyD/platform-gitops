@@ -176,6 +176,10 @@ so once the role exists AVP authentication starts working.
 (entitlement, license, superuser, manage-crypto, mongo/sls-mongo creds + host, jdbc). Mongo/SLS
 CAs come later (§7) once the dedicated Mongo is Ready.
 
+Do not export `MANAGE_CRYPTO_KEY` or `MANAGE_CRYPTOX_KEY` for normal installs. The loader
+auto-generates valid 72-character keys, reuses the existing Vault values on rerun, and only rotates
+them when `ROTATE_MANAGE_CRYPTO_KEYS=true` is explicitly set before Manage owns data.
+
 ```bash
 export VAULT_TOKEN='<vault admin>'
 export IBM_ENTITLEMENT_KEY='...'           \

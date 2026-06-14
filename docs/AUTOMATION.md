@@ -112,3 +112,6 @@ instead and leave `enable.vaultUnseal: false`. See Appendix A of `SETUP-GUIDE.md
 1. **Private repo token** — only needed when the GitHub repos are private; supply once in `bootstrap/00-prereqs/repo-creds/`.
 2. **Vault root/unseal keys capture** — `init-vault.sh` generates them; a human must store them
    securely. Auto-unseal then handles subsequent restarts, but first capture stays manual.
+
+Manage crypto keys are not a manual input in this flow. `load-secrets.sh` creates them once,
+stores them in Vault, and reuses the stored values on later runs.
