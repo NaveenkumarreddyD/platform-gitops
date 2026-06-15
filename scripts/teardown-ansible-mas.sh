@@ -18,7 +18,7 @@ set -uo pipefail
 INSTANCES="drmasapp"            # space-separated MAS instance ids installed by Ansible
 SLS_NS="ibm-sls"               # shared SLS ns (or mas-<inst>-sls if dedicated)
 MONGO_NS="mongoce"             # MongoDB Community namespace
-DRO_NS="redhat-marketplace"    # Data Reporter Operator namespace
+DRO_NS="ibm-software-central"  # Data Reporter Operator namespace
 GRAFANA_NS="grafana"           # Ansible Grafana namespace
 CERTMGR_OPERATOR_NS="cert-manager-operator"
 CERTMGR_NS="cert-manager"
@@ -119,7 +119,7 @@ run "oc delete catalogsource $CATALOG_NAME -n $CATALOG_NS --ignore-not-found 2>/
 run "oc delete ns ibm-common-services --ignore-not-found --timeout=120s 2>/dev/null || true"; unstick_ns ibm-common-services
 
 banner "PHASE 9  VERIFY (should all be empty)"
-echo "-- MAS/SLS/grafana/cert-manager namespaces --"; oc get ns 2>/dev/null | grep -Ei 'mas-|ibm-sls|mongoce|grafana|cert-manager|redhat-marketplace|ibm-common' || echo "   none"
+echo "-- MAS/SLS/grafana/cert-manager namespaces --"; oc get ns 2>/dev/null | grep -Ei 'mas-|ibm-sls|mongoce|grafana|cert-manager|ibm-software-central|ibm-common' || echo "   none"
 echo "-- IBM/MAS/grafana CRDs --"; oc get crd 2>/dev/null | grep -Ei "$CRD_MATCH|cert-manager.io" || echo "   none"
 echo "-- IBM operator catalog --"; oc get catalogsource -n $CATALOG_NS 2>/dev/null | grep -i ibm-operator-catalog || echo "   none"
 echo "-- leftover CSVs --"; oc get csv -A 2>/dev/null | grep -Ei 'ibm-mas|ibm-sls|cert-manager|grafana|mongodb|dro' || echo "   none"

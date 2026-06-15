@@ -1,5 +1,5 @@
 instanceId: nmasapp
 mongo: { namespace: mongo-nmasapp, members: 3, version: "6.0.12" }
 jdbc:  { sslEnabled: false }
-dro:   { namespace: redhat-marketplace }
+dro:   { namespace: ibm-software-central }
 sls:   { syncEnabled: true }

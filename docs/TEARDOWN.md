@@ -38,7 +38,7 @@ the `ibm-operator-catalog` CatalogSource — then prints a verification summary.
 
 ## 3. Verify clean
 ```
-oc get ns | grep -Ei 'mas-|ibm-sls|mongoce|grafana|cert-manager|redhat-marketplace|ibm-common'   # none
+oc get ns | grep -Ei 'mas-|ibm-sls|mongoce|grafana|cert-manager|ibm-software-central|ibm-common'  # none
 oc get crd | grep -Ei 'mas.ibm.com|sls.ibm.com|grafana.integreatly|cert-manager.io'              # none
 oc get catalogsource -n openshift-marketplace | grep ibm-operator-catalog                         # none
 oc get csv -A | grep -Ei 'ibm-mas|ibm-sls|cert-manager|grafana'                                    # none
