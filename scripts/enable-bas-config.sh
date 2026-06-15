@@ -38,11 +38,18 @@ for k in url api_token ca.crt; do
 done
 
 echo ">> enabling ENABLE_BAS_CONFIG=true in $ENVFILE"
-if grep -q '^ENABLE_BAS_CONFIG=' "$ENVFILE"; then
-  perl -0pi -e 's/^ENABLE_BAS_CONFIG=.*/ENABLE_BAS_CONFIG=true/m' "$ENVFILE"
-else
-  printf '\nENABLE_BAS_CONFIG=true\n' >> "$ENVFILE"
-fi
+set_env_true() {
+  local key="${1:?env key}"
+  if grep -q "^${key}=" "$ENVFILE"; then
+    perl -0pi -e "s/^${key}=.*/${key}=true/m" "$ENVFILE"
+  else
+    printf '\n%s=true\n' "$key" >> "$ENVFILE"
+  fi
+}
+set_env_true ENABLE_BAS_CONFIG
+set_env_true MAS_FEATURE_USAGE
+set_env_true MAS_DEPLOYMENT_PROGRESSION
+set_env_true MAS_USABILITY_METRICS
 
 (
   cd "$CONFIG_REPO"
@@ -68,8 +75,6 @@ fi
 )
 
 echo ">> refreshing and syncing account-root so bas-system is generated"
-hard_refresh_app ibm-mas-account-root
-sync_app_oc ibm-mas-account-root false
-wait_app_synced_healthy ibm-mas-account-root 1200
+sync_parent_until_child_exists ibm-mas-account-root "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" 900
 hard_refresh_app "${INSTANCE_ID}-bas-system.${CLUSTER_ID}"
 echo ">> BAS config enabled. Sync/monitor ${INSTANCE_ID}-bas-system.${CLUSTER_ID}."

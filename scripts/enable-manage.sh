@@ -75,21 +75,18 @@ fi
 )
 
 echo ">> refreshing account-root so Manage apps are generated"
-hard_refresh_app ibm-mas-account-root
-sync_app_oc ibm-mas-account-root false
-wait_app_synced_idle ibm-mas-account-root 1200
 
 MANAGE_APP="manage.${CLUSTER_ID}.${INSTANCE_ID}"
 WORKSPACE_APP="${WORKSPACE_ID}.manage.${CLUSTER_ID}.${INSTANCE_ID}"
 
-wait_app_exists "$MANAGE_APP" 900
+sync_parent_until_child_exists ibm-mas-account-root "$MANAGE_APP" 900
 sync_app_oc "$MANAGE_APP" false
 wait_app_synced_idle "$MANAGE_APP" 3600
 
 echo ">> waiting for ManageWorkspace CRD before syncing workspace"
 wait_crd manageworkspaces.apps.mas.ibm.com 3600
 
-wait_app_exists "$WORKSPACE_APP" 900
+sync_parent_until_child_exists ibm-mas-account-root "$WORKSPACE_APP" 900
 sync_app_oc "$WORKSPACE_APP" false
 
 echo ">> Manage enabled. Watch:"

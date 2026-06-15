@@ -73,11 +73,7 @@ fi
 )
 
 echo ">> refreshing account-root so ${INSTANCE_ID}-sls-system.${CLUSTER_ID} is generated"
-hard_refresh_app ibm-mas-account-root
-sync_app_oc ibm-mas-account-root false
-wait_app_synced_idle ibm-mas-account-root 1200
-
 echo ">> syncing ${INSTANCE_ID}-sls-system.${CLUSTER_ID}"
-wait_app_exists "${INSTANCE_ID}-sls-system.${CLUSTER_ID}" 600
+sync_parent_until_child_exists ibm-mas-account-root "${INSTANCE_ID}-sls-system.${CLUSTER_ID}" 600
 sync_app_oc "${INSTANCE_ID}-sls-system.${CLUSTER_ID}" true
 wait_app_synced_healthy "${INSTANCE_ID}-sls-system.${CLUSTER_ID}" 1200

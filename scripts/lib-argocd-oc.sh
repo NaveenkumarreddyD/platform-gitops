@@ -33,6 +33,33 @@ wait_app_exists() {
   done
 }
 
+sync_parent_until_child_exists() {
+  local parent="${1:?parent app name}" child="${2:?child app name}" timeout="${3:-600}" elapsed=0
+  while :; do
+    oc get application "$child" -n "$ARGO_NS" >/dev/null 2>&1 && {
+      echo ">> application/$child exists"
+      return 0
+    }
+
+    echo ">> refreshing/syncing $parent so application/$child is generated"
+    sync_app_oc "$parent" false
+
+    for _ in 1 2 3 4 5 6; do
+      oc get application "$child" -n "$ARGO_NS" >/dev/null 2>&1 && {
+        echo ">> application/$child exists"
+        return 0
+      }
+      sleep 5
+      (( elapsed += 5 ))
+      [[ "$elapsed" -ge "$timeout" ]] && {
+        echo "ERROR: timeout waiting for application/$child after refreshing $parent" >&2
+        print_app_diagnostics "$parent" || true
+        return 1
+      }
+    done
+  done
+}
+
 sync_app_oc() {
   local app="${1:?app name}" prune="${2:-false}"
   oc get application "$app" -n "$ARGO_NS" >/dev/null
