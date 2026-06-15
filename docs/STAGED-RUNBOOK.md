@@ -3,7 +3,7 @@
 This is the safer drroc4 path. It deliberately avoids the old one-shot flow until the install is
 stable. Each phase creates only resources whose prerequisites already exist.
 
-Initial config gates in `mas-config-repo/envs/drroc4.env`:
+Initial config gates in `mas-gitops-config/envs/drroc4.env`:
 
 ```bash
 ENABLE_SLS_CONFIG=false
@@ -30,7 +30,7 @@ Do not reinstall until those commands are empty.
 
 ## 1. Push First-Stage Config
 
-From `mas-config-repo`:
+From `mas-gitops-config`:
 
 ```bash
 python3 render.py drroc4
@@ -42,7 +42,7 @@ git push
 From `platform-gitops`:
 
 ```bash
-git add gitops/envs/drroc4/values.yaml gitops/templates/app-50-vault-registration-sync.yaml scripts
+git add gitops/envs/drroc4/values.yaml gitops/templates/apps/50-runtime-sync scripts
 git commit -m "stage drroc4 runtime gates"
 git push
 ```
@@ -69,8 +69,8 @@ export JDBC_USERNAME='...'
 export JDBC_PASSWORD='...'
 export JDBC_URL='jdbc:oracle:thin:@//host:1521/SVC'
 
-./scripts/deploy.sh --yes ../mas-config-repo/envs/drroc4.env
-./scripts/prepare-prereqs.sh ../mas-config-repo/envs/drroc4.env
+./scripts/deploy.sh --yes ../mas-gitops-config/envs/drroc4.env
+./scripts/prepare-prereqs.sh ../mas-gitops-config/envs/drroc4.env
 ```
 
 This stops with Vault, MongoDB, Mongo CA, static secrets, and first-stage MAS config ready.
@@ -78,8 +78,8 @@ This stops with Vault, MongoDB, Mongo CA, static secrets, and first-stage MAS co
 ## 3. Start MAS Foundation Only
 
 ```bash
-./scripts/sync-mas-account-root.sh ../mas-config-repo/envs/drroc4.env
-./scripts/check-olm-catalog.sh ../mas-config-repo/envs/drroc4.env
+./scripts/sync-mas-account-root.sh ../mas-gitops-config/envs/drroc4.env
+./scripts/check-olm-catalog.sh ../mas-gitops-config/envs/drroc4.env
 ```
 
 Expected first-stage generated scope:
@@ -110,8 +110,8 @@ oc get licenseservice -n mas-drgitopsapp-sls
 After `licenseservice/sls` has a registration key:
 
 ```bash
-./scripts/sync-runtime-registration.sh --sls-only ../mas-config-repo/envs/drroc4.env
-./scripts/enable-sls-config.sh --yes ../mas-config-repo/envs/drroc4.env
+./scripts/sync-runtime-registration.sh --sls-only ../mas-gitops-config/envs/drroc4.env
+./scripts/enable-sls-config.sh --yes ../mas-gitops-config/envs/drroc4.env
 ```
 
 This writes `secret/mas/drroc4/drgitopsapp/sls` in Vault, flips `ENABLE_SLS_CONFIG=true`,
@@ -122,7 +122,7 @@ renders/commits/pushes config, and syncs `drgitopsapp-sls-system.drroc4`.
 After Suite has registered MAS config CRDs:
 
 ```bash
-./scripts/sync-jdbc-config.sh ../mas-config-repo/envs/drroc4.env
+./scripts/sync-jdbc-config.sh ../mas-gitops-config/envs/drroc4.env
 ```
 
 Verify the three system configs exist:
@@ -134,7 +134,7 @@ oc get mongocfgs,slscfgs,jdbccfgs -n mas-drgitopsapp-core
 ## 6. Enable Manage
 
 ```bash
-./scripts/enable-manage.sh --yes ../mas-config-repo/envs/drroc4.env
+./scripts/enable-manage.sh --yes ../mas-gitops-config/envs/drroc4.env
 ```
 
 Watch:
@@ -148,23 +148,23 @@ oc get pods -n mas-drgitopsapp-manage -w
 
 Do this only after MAS + Manage are stable.
 
-1. Set `GITOPS_OWNS_DRO=true` in `mas-config-repo/envs/drroc4.env`.
+1. Set `GITOPS_OWNS_DRO=true` in `mas-gitops-config/envs/drroc4.env`.
 2. Set `dro.syncEnabled: true` in `platform-gitops/gitops/envs/drroc4/values.yaml`.
 3. Render, commit, and push both repos.
 4. Refresh/sync account-root and `platform-drroc4`.
 5. When DRO has a route and token:
 
 ```bash
-./scripts/sync-runtime-registration.sh --dro-only ../mas-config-repo/envs/drroc4.env
-./scripts/enable-bas-config.sh --yes ../mas-config-repo/envs/drroc4.env
+./scripts/sync-runtime-registration.sh --dro-only ../mas-gitops-config/envs/drroc4.env
+./scripts/enable-bas-config.sh --yes ../mas-gitops-config/envs/drroc4.env
 ```
 
 ## Diagnostics
 
 ```bash
-./scripts/status-summary.sh ../mas-config-repo/envs/drroc4.env
-./scripts/app-diagnostics.sh ../mas-config-repo/envs/drroc4.env
-./scripts/preflight-vault.sh --phase full ../mas-config-repo/envs/drroc4.env
+./scripts/status-summary.sh ../mas-gitops-config/envs/drroc4.env
+./scripts/app-diagnostics.sh ../mas-gitops-config/envs/drroc4.env
+./scripts/preflight-vault.sh --phase full ../mas-gitops-config/envs/drroc4.env
 ```
 
 If OLM fails, inspect the exact namespace:

@@ -6,8 +6,8 @@ GitOps control plane for IBM MAS on on-prem OpenShift, using **ArgoCD** + **Hash
 ## Layout
 ```
 bootstrap/   day-0 seed (the ONLY manual step): prereqs, AVP enablement, AppProject. apply.sh.
-gitops/      app-of-apps generator (self-healing). templates/root-application.yaml + one
-             app-NN-*.yaml per workload. Per-cluster values under envs/<cluster>/.
+gitops/      app-of-apps generator (self-healing). templates/root/ for the root app and
+             templates/apps/<domain>/app-NN-*.yaml for children. Per-cluster values under envs/<cluster>/.
 workloads/   the charts the Applications deploy: operators, mongodb, jdbc, vault-sync,
              vault-unseal (opt-in auto-unseal). Grafana is disabled by default.
 scripts/     imperative glue GitOps can't do (Vault auth, load secrets, runtime registration).
@@ -34,7 +34,7 @@ export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID
 
 # 3. ONE command: secrets -> render -> Mongo -> account-root ->
 #    SLS/DRO registration -> BAS -> verify (each step waits for its precondition):
-./scripts/install-all.sh --yes ../mas-config-repo/envs/<cluster>.env
+./scripts/install-all.sh --yes ../mas-gitops-config/envs/<cluster>.env
 ```
 Prerequisites-only (old `install-gated.sh` behaviour): `./scripts/install-all.sh --until prereqs <env>`.
 Resume after a transient failure: `./scripts/install-all.sh --from registration <env>`.

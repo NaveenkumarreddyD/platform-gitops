@@ -18,7 +18,7 @@ set -euo pipefail
 #       JDBC_USERNAME, JDBC_PASSWORD, JDBC_URL  (+ JDBC_CA_CRT if SSL)
 #
 # Usage:
-#   ./scripts/install-all.sh [options] ../mas-config-repo/envs/drroc4.env
+#   ./scripts/install-all.sh [options] ../mas-gitops-config/envs/drroc4.env
 #
 # Options:
 #   --yes            non-interactive: auto-confirm config commits/pushes

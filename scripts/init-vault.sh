@@ -75,6 +75,6 @@ cat <<MSG
  Vault initialized + all $REPLICAS node(s) unsealed.
  Next (one command finishes the platform):
      export VAULT_TOKEN=$ROOT
-     bash scripts/deploy.sh ../mas-config-repo/envs/drroc4.env
+     bash scripts/deploy.sh ../mas-gitops-config/envs/drroc4.env
 ============================================================
 MSG

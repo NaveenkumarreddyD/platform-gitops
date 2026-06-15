@@ -46,8 +46,8 @@ install-all.sh, in order — each step blocks on its precondition:
                        publish Mongo CA into Vault -> full Vault preflight
  4 account-root        full preflight -> sync ibm-mas-account-root -> WAIT Synced/Healthy
                        (this is what starts MAS Core / SLS / Manage generation)
- 5 registration       WAIT LicenseService initialized -> WAIT DRO route+secret ->
-                       sync vault-registration-sync (in-cluster jobs harvest SLS+DRO -> Vault)
+ 5 registration       WAIT LicenseService initialized -> sync vault-sync-sls
+                       (DRO/BAS is a later staged gate)
  6 bas                verify dro#url/api_token/ca.crt in Vault -> enable BAS -> resync account-root
  7 verify             status summary + AVP/health checks
 ```
@@ -65,7 +65,7 @@ export VAULT_TOKEN=<root/admin>
 export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID=... \
        JDBC_USERNAME=... JDBC_PASSWORD=... JDBC_URL='jdbc:oracle:thin:@//host:1521/SVC'
 
-./scripts/install-all.sh --yes ../mas-config-repo/envs/drroc4.env
+./scripts/install-all.sh --yes ../mas-gitops-config/envs/drroc4.env
 ```
 
 Options:
