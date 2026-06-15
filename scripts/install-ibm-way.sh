@@ -69,6 +69,7 @@ banner "9. Enable Manage"
 
 banner "10. Summary"
 ./scripts/status-summary.sh "$ENVFILE" || true
+./scripts/verify-install.sh "$ENVFILE"
 
 cat <<MSG
 

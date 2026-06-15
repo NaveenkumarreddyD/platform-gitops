@@ -16,32 +16,20 @@ vault-auth/  Vault k8s-auth setup + policies.
 docs/        SETUP-GUIDE.md (step reference), AUTOMATION.md (one-shot flow), STRUCTURE.md.
 ```
 
-## Quick start (per cluster, once)
+## Quick Start
 
-For `drroc4`, use the staged bring-up first: [`docs/STAGED-RUNBOOK.md`](docs/STAGED-RUNBOOK.md).
-It keeps each dependency gated, but treats DRO/BAS as required before Manage because MAS Suite
-readiness depends on `BasIntegrationReady` in this topology.
+For `drroc4`, use the easy deployment guide: [`DEPLOY.md`](DEPLOY.md).
 
 ```bash
-# 1. fill in real repo creds: bootstrap/00-prereqs/repo-creds/
-./bootstrap/apply.sh <nroc4|roc4|drroc4>      # applies ONLY the root app; ArgoCD generates the rest
-
-# 2. init + unseal Vault once (--store-k8s-secret seeds the auto-unseal keys Secret):
+./bootstrap/apply.sh drroc4
 bash scripts/init-vault.sh --store-k8s-secret
-export VAULT_TOKEN=<root-token-it-prints>
-export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID=... \
-       JDBC_USERNAME=... JDBC_PASSWORD=... JDBC_URL=...
-
-# 3. ONE command: secrets -> render -> Mongo -> account-root -> SLSCfg ->
-#    JdbcCfg -> DRO/BAS -> Suite Ready -> Manage:
-./scripts/install-ibm-way.sh --yes ../mas-gitops-config/envs/<cluster>.env
+./scripts/install-ibm-way.sh --yes ../mas-gitops-config/envs/drroc4.env
 ```
-Prerequisites-only: `./scripts/deploy.sh --yes <env>` followed by `./scripts/prepare-prereqs.sh <env>`.
-Resume after a transient failure by rerunning `install-ibm-way.sh`; each stage is guarded by
-readiness checks and idempotent syncs.
 
-Full procedure: [`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md). One-shot + auto-unseal:
-[`docs/AUTOMATION.md`](docs/AUTOMATION.md). Architecture: [`docs/STRUCTURE.md`](docs/STRUCTURE.md).
+The installer follows the IBM order: Mongo, SLS, JDBC, DRO/BAS, Suite Ready, then Manage.
+It waits for actual MAS CR readiness and verifies the final state.
+
+Detailed procedure: [`DEPLOY.md`](DEPLOY.md). Architecture: [`docs/STRUCTURE.md`](docs/STRUCTURE.md).
 
 ## Add a cluster
 Copy `gitops/envs/_example/` to `gitops/envs/<cluster>/`, fill `common.yaml` + `values.yaml`,
