@@ -1,5 +1,5 @@
 # Locally-owned external Oracle JdbcCfg. Does NOT modify any IBM chart.
-# jdbc_ssl_enabled=false -> sslEnabled:false, no certificates (matches Ansible TCP/1521).
+# jdbc_ssl_enabled=false -> sslEnabled:false, no certificates for TCP/1521.
 # jdbc_ssl_enabled=true  -> sslEnabled:true + certificates[] from the Vault CA (TCPS/2484).
 ---
 apiVersion: v1

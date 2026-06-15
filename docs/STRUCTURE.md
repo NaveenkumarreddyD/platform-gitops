@@ -30,19 +30,17 @@ bootstrap/apply.sh <env>
   -> 00-prereqs (AppProject + creds + CA + RBAC)
   -> helm template gitops --set rootOnly=true | oc apply   (applies ONLY the root app)
 platform-<env>  (now ArgoCD-managed, self-heals)
-  -> renders gitops/ -> GENERATES all 9 child Applications, sync-wave ordered:
-     -20 root | 10 Vault | 19 Mongo SCC prereq | 20 Mongo operator(Helm) | 25 Mongo CR | 28 mongo->Vault gate
-     30 account-root (manual gate for MAS) | 40 JDBC | 50 runtime sync (manual after SLS/DRO exists)
+  -> renders gitops/ -> GENERATES wave-ordered child Applications:
+     Vault, MongoDB, MAS account-root, JDBC, SLS, DRO/BAS, Manage, optional components.
 ```
 
-`ibm-mas-account-root` is intentionally generated without an automated sync policy by default.
-Sync it manually only after Vault is initialized, MongoDB is Running, and the Vault preflight for
-entitlement, license, Mongo credentials/CA, and JDBC passes.
-Runtime sync Applications are also manual by default so their SLS/DRO PostSync jobs do not time out
-before account-root creates the runtime services.
+Use `scripts/install-ibm-way.sh` as the production entrypoint. It renders config, refreshes
+Argo CD parents until child Applications exist, then waits on real MAS CR readiness in IBM order:
+MongoDB, SLS, JDBC, DRO/BAS, Suite Ready, and finally Manage.
 
 ## Add a cluster/env
 1. `gitops/envs/<cluster>/`: copy `envs/_example/` -> `common.yaml` (clusterId, storageClass, vault.host) + `values.yaml` (instanceId, mongo ns, jdbc, dro, sls).
 2. Optional components such as Grafana are controlled by `enable.*` values.
 3. `mas-gitops-config`: add `envs/<cluster>.env` + `render.py <cluster>`.
-4. `./bootstrap/apply.sh <env>` on that cluster. No template edits.
+4. `./bootstrap/apply.sh <env>` on that cluster, then run `scripts/install-ibm-way.sh --yes <envfile>`.
+   No template edits.

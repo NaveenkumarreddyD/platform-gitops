@@ -21,7 +21,7 @@ dro: { namespace: ibm-software-central, syncEnabled: true }
 
 ## One Command Path
 
-After `./bootstrap/apply.sh drroc4`, Vault init/unseal, and exporting the required secret inputs,
+After the one-time Vault setup and exporting the required secret inputs,
 run:
 
 ```bash
@@ -31,7 +31,7 @@ run:
 This runs the supported order:
 
 ```text
-Vault/static secrets -> Mongo -> account-root -> SLS registration -> SLSCfg ->
+Vault auth/static secret refresh -> Mongo -> account-root -> SLS registration -> SLSCfg ->
 JdbcCfg -> DRO registration -> BASCfg -> Suite Ready -> Manage
 ```
 
@@ -66,15 +66,17 @@ git push
 
 Push these to the GitLab repos Argo CD reads, not only to a local mirror.
 
-## 2. Bootstrap Platform + Vault
+## 2. One-Time Platform Vault Setup
 
 ```bash
 cd platform-gitops
-./bootstrap/apply.sh drroc4
-
-bash scripts/init-vault.sh --store-k8s-secret
-export VAULT_TOKEN='<root token from init-vault>'
+./scripts/setup-vault-platform.sh --store-k8s-secret drroc4
+export VAULT_TOKEN='<root token from Vault init>'
+./scripts/setup-vault-auth.sh
 ```
+
+Vault is durable platform state. Do not delete Vault PVCs or recreate Vault when you delete/recreate
+MAS, Manage, JDBC config, or namespaces.
 
 Load static secret material:
 

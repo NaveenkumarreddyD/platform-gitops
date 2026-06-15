@@ -25,5 +25,6 @@ helm template platform "$ROOT/gitops" \
   --set rootOnly=true | oc apply -f -
 
 echo ">> 4/4 done. The root app (platform-$ENV) now generates + self-heals everything."
-echo "   Next (one-time): init/unseal Vault -> ./scripts/setup-vault-auth.sh -> ./scripts/load-secrets.sh"
+echo "   Next for first-time Vault only: ./scripts/setup-vault-platform.sh --store-k8s-secret $ENV"
+echo "   Next for normal MAS install/recreate: ./scripts/install-ibm-way.sh --yes <envfile>"
 echo "   Watch: oc get applications -n $NS"

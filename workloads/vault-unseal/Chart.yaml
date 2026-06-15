@@ -8,4 +8,4 @@ description: >
   "unseal every pod after a restart" step without requiring a cloud KMS
   (AWS/Azure/GCP) or a second transit Vault — appropriate for on-prem / non-IBM.
   Security note: unseal keys live in a Kubernetes Secret in the vault namespace.
-  For HSM-grade custody use a transit/KMS seal instead (see docs/AUTOMATION.md).
+  For HSM-grade custody use a transit/KMS seal instead.

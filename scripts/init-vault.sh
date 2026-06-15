@@ -38,7 +38,7 @@ wait_running "${STS}-0"
 if oc exec -n "$NS" "${STS}-0" -- sh -c "$V vault status -format=json" 2>/dev/null | grep -q '"initialized": *true'; then
   echo ">> Vault is ALREADY initialized."
   echo "   - If nodes are just sealed, unseal each (${STS}-0..$((REPLICAS-1))) with your saved keys."
-  echo "   - For a TRULY fresh Vault: oc delete pvc -n $NS --all && oc delete pod -n $NS -l app.kubernetes.io/name=vault --force --grace-period=0 ; then re-run."
+  echo "   - Do not delete Vault PVCs during MAS reinstall/recreate; Vault is durable platform state."
   exit 0
 fi
 
@@ -73,8 +73,8 @@ cat <<MSG
 
 ============================================================
  Vault initialized + all $REPLICAS node(s) unsealed.
- Next (one command finishes the platform):
+ Next:
      export VAULT_TOKEN=$ROOT
-     bash scripts/deploy.sh ../mas-gitops-config/envs/drroc4.env
+     ./scripts/setup-vault-auth.sh
 ============================================================
 MSG

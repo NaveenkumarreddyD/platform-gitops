@@ -4,7 +4,7 @@ mas_config_name: drgitopsapp-jdbc-system
 # NOTE: this chart emits a SYSTEM-scoped JdbcCfg only (Manage binds `jdbc: system`),
 # so no workspace id is needed here.
 # ---- SSL toggle ----
-jdbc_ssl_enabled: false        # false = TCP/1521 (Ansible parity). true = TCPS/2484.
+jdbc_ssl_enabled: false        # false = TCP/1521. true = TCPS/2484.
 # url: non-SSL EZConnect now; for TCPS use a full descriptor (PROTOCOL=TCPS)(PORT=2484) — see README.
 jdbc_url: "<path:secret/data/mas/drroc4/drgitopsapp/jdbc-system#jdbc_url>"
 jdbc_username: "<path:secret/data/mas/drroc4/drgitopsapp/jdbc-system#username>"
