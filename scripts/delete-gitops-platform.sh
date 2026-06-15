@@ -1,0 +1,189 @@
+#!/usr/bin/env bash
+set -euo pipefail
+# Destructive full cleanup for one platform-gitops cluster/instance.
+#
+# Deletes Argo CD Applications for the cluster and MAS instance, strips finalizers from
+# target namespaces, deletes resources, then deletes namespaces. Vault is preserved unless
+# --include-vault is passed.
+#
+# Usage:
+#   ./scripts/delete-gitops-platform.sh --confirm ../mas-gitops-config/envs/drroc4.env
+#   ./scripts/delete-gitops-platform.sh --confirm --include-vault ../mas-gitops-config/envs/drroc4.env
+
+ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
+source "$ROOT/scripts/lib-argocd-oc.sh"
+
+CONFIRM=0
+INCLUDE_VAULT=0
+ENVFILE=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --confirm) CONFIRM=1; shift ;;
+    --include-vault) INCLUDE_VAULT=1; shift ;;
+    -h|--help)
+      sed -n '1,13p' "$0"
+      exit 0
+      ;;
+    *) ENVFILE="$1"; shift ;;
+  esac
+done
+ENVFILE="${ENVFILE:?usage: delete-gitops-platform.sh --confirm <path/to/cluster.env>}"
+[[ -f "$ENVFILE" ]] || { echo "ERROR: env file not found: $ENVFILE" >&2; exit 2; }
+
+# shellcheck disable=SC1090
+set -a; . "$ENVFILE"; set +a
+: "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
+MONGO_NS="${MONGO_NS:-mongo-${INSTANCE_ID}}"
+DRO_NAMESPACE="${DRO_NAMESPACE:-ibm-software-central}"
+
+if [[ "$CONFIRM" != "1" ]]; then
+  cat <<MSG
+Dry run only. Nothing was deleted.
+
+Will delete GitOps platform/instance resources for:
+  cluster:  $CLUSTER_ID
+  instance: $INSTANCE_ID
+  mongo ns: $MONGO_NS
+  DRO ns:   $DRO_NAMESPACE
+
+Vault is preserved unless --include-vault is passed.
+MSG
+  exit 0
+fi
+
+TARGET_NAMESPACES=(
+  "mas-${INSTANCE_ID}-core"
+  "mas-${INSTANCE_ID}-manage"
+  "mas-${INSTANCE_ID}-sls"
+  "mas-${INSTANCE_ID}-syncres"
+  "$MONGO_NS"
+  "$DRO_NAMESPACE"
+)
+[[ "$INCLUDE_VAULT" == "1" ]] && TARGET_NAMESPACES+=("vault")
+
+say(){ printf '\n=== %s ===\n' "$*"; }
+
+app_matches(){
+  local name="$1"
+  [[ "$name" == "platform-${CLUSTER_ID}" ]] && return 0
+  [[ "$name" == "hashicorp-vault-server" && "$INCLUDE_VAULT" == "1" ]] && return 0
+  [[ "$name" == *"${CLUSTER_ID}"* ]] && return 0
+  [[ "$name" == *"${INSTANCE_ID}"* ]] && return 0
+  [[ "$name" == *"${MONGO_NS}"* ]] && return 0
+  [[ "$name" == *"${DRO_NAMESPACE}"* ]] && return 0
+  return 1
+}
+
+delete_matching_apps_once(){
+  local deleted=0 name
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    if app_matches "$name"; then
+      echo ">> deleting application/$name"
+      oc patch application "$name" -n "$ARGO_NS" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+      oc delete application "$name" -n "$ARGO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+      deleted=1
+    fi
+  done < <(oc get applications -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
+  return "$deleted"
+}
+
+patch_finalizers_for_resource(){
+  local resource="$1" namespace="$2"
+  oc get "$resource" -n "$namespace" -o name 2>/dev/null | while read -r obj; do
+    [[ -n "$obj" ]] || continue
+    oc patch "$obj" -n "$namespace" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+  done
+}
+
+patch_finalizers_in_namespace(){
+  local namespace="$1"
+  oc get ns "$namespace" >/dev/null 2>&1 || return 0
+  echo ">> removing finalizers in namespace/$namespace"
+  while read -r resource; do
+    [[ -n "$resource" ]] || continue
+    patch_finalizers_for_resource "$resource" "$namespace"
+  done < <(oc api-resources --verbs=list --namespaced -o name 2>/dev/null)
+  oc patch ns "$namespace" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+}
+
+delete_all_in_namespace(){
+  local namespace="$1"
+  oc get ns "$namespace" >/dev/null 2>&1 || return 0
+  echo ">> deleting namespaced resources in namespace/$namespace"
+  while read -r resource; do
+    [[ -n "$resource" ]] || continue
+    oc delete "$resource" --all -n "$namespace" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  done < <(oc api-resources --verbs=list --namespaced -o name 2>/dev/null)
+}
+
+say "1. Stop Argo CD reconciliation"
+for _ in $(seq 1 6); do
+  if delete_matching_apps_once; then
+    sleep 10
+  else
+    break
+  fi
+done
+
+say "2. Remove finalizers from MAS and platform resources"
+for ns in "${TARGET_NAMESPACES[@]}"; do
+  oc get ns "$ns" >/dev/null 2>&1 || continue
+  for resource in \
+    suite.core.mas.ibm.com \
+    manageapp.apps.mas.ibm.com \
+    manageworkspace.apps.mas.ibm.com \
+    jdbccfg.config.mas.ibm.com \
+    slscfg.config.mas.ibm.com \
+    mongocfg.config.mas.ibm.com \
+    bascfg.config.mas.ibm.com \
+    licenseservice.sls.ibm.com \
+    mongodbcommunity.mongodbcommunity.mongodb.com; do
+    patch_finalizers_for_resource "$resource" "$ns"
+  done
+  patch_finalizers_in_namespace "$ns"
+done
+
+say "3. Delete all resources before deleting namespaces"
+for ns in "${TARGET_NAMESPACES[@]}"; do
+  delete_all_in_namespace "$ns"
+done
+
+say "4. Delete target namespaces"
+for ns in "${TARGET_NAMESPACES[@]}"; do
+  if oc get ns "$ns" >/dev/null 2>&1; then
+    echo ">> deleting namespace/$ns"
+    oc patch ns "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    oc delete ns "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  fi
+done
+
+say "5. Verification"
+remaining_apps="$(oc get applications -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null | grep -E "(${CLUSTER_ID}|${INSTANCE_ID}|${MONGO_NS}|${DRO_NAMESPACE}|hashicorp-vault-server)" || true)"
+if [[ -n "$remaining_apps" ]]; then
+  echo "Remaining matching Argo CD Applications:"
+  echo "$remaining_apps"
+else
+  echo "No matching Argo CD Applications"
+fi
+
+remaining_ns="$(oc get ns 2>/dev/null | grep -E "mas-${INSTANCE_ID}|${MONGO_NS}|${DRO_NAMESPACE}|vault" || true)"
+if [[ -n "$remaining_ns" ]]; then
+  echo "Remaining matching namespaces:"
+  echo "$remaining_ns"
+else
+  echo "No matching namespaces"
+fi
+
+remaining_crs="$(oc get suite,manageapp,manageworkspace,jdbccfg,slscfg,mongocfg,bascfg -A 2>/dev/null | grep "$INSTANCE_ID" || true)"
+if [[ -n "$remaining_crs" ]]; then
+  echo "Remaining matching MAS CRs:"
+  echo "$remaining_crs"
+else
+  echo "No matching MAS CRs"
+fi
+
+cat <<MSG
+
+If anything remains Terminating, wait 1-2 minutes and rerun this script.
+MSG
