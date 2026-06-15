@@ -127,6 +127,51 @@ wait_crd() {
   done
 }
 
+resource_status() {
+  local resource="${1:?resource}" name="${2:?name}" namespace="${3:?namespace}"
+  oc get "$resource" "$name" -n "$namespace" -o jsonpath='{.status.status}' 2>/dev/null || true
+}
+
+wait_resource_ready() {
+  local resource="${1:?resource}" name="${2:?name}" namespace="${3:?namespace}" timeout="${4:-1800}" elapsed=0 status=""
+  while :; do
+    status="$(resource_status "$resource" "$name" "$namespace")"
+    [[ "$status" == "Ready" ]] && {
+      echo ">> $resource/$name Ready"
+      return 0
+    }
+    (( elapsed += 15 ))
+    [[ "$elapsed" -ge "$timeout" ]] && {
+      echo "ERROR: timeout waiting for $namespace/$resource/$name Ready (status=${status:-missing})" >&2
+      oc get "$resource" "$name" -n "$namespace" -o yaml 2>/dev/null | \
+        grep -iA8 -B2 'conditions:\|message:\|reason:\|status:\|type:' || true
+      return 1
+    }
+    sleep 15
+  done
+}
+
+wait_suite_ready() {
+  local suite="${1:?suite name}" namespace="${2:?namespace}" timeout="${3:-3600}" elapsed=0 status="" generation="" observed=""
+  while :; do
+    status="$(resource_status suite "$suite" "$namespace")"
+    generation="$(oc get suite "$suite" -n "$namespace" -o jsonpath='{.metadata.generation}' 2>/dev/null || true)"
+    observed="$(oc get suite "$suite" -n "$namespace" -o jsonpath='{.status.observedGeneration}' 2>/dev/null || true)"
+    [[ "$status" == "Ready" && ( -z "$generation" || "$generation" == "$observed" ) ]] && {
+      echo ">> suite/$suite Ready"
+      return 0
+    }
+    (( elapsed += 15 ))
+    [[ "$elapsed" -ge "$timeout" ]] && {
+      echo "ERROR: timeout waiting for $namespace/suite/$suite Ready (status=${status:-missing} generation=${generation:-?} observed=${observed:-?})" >&2
+      oc get suite "$suite" -n "$namespace" -o yaml 2>/dev/null | \
+        grep -iA8 -B2 'BasIntegrationReady\|IncompleteConfiguration\|Required condition\|conditions:\|message:\|reason:\|status:\|type:' || true
+      return 1
+    }
+    sleep 15
+  done
+}
+
 print_app_diagnostics() {
   local app="${1:?app name}"
   echo "== $app =="

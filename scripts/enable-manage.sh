@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Enable Manage only after Suite config and the locally-owned JDBC config exist.
+# Enable Manage only after the IBM-required system configs and Suite are Ready.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"
@@ -31,18 +31,19 @@ wait_crd suites.core.mas.ibm.com 1800
 wait_crd mongocfgs.config.mas.ibm.com 1800
 wait_crd slscfgs.config.mas.ibm.com 1800
 wait_crd jdbccfgs.config.mas.ibm.com 1800
+wait_crd bascfgs.config.mas.ibm.com 1800
 
 for spec in \
   "mongocfgs.config.mas.ibm.com ${INSTANCE_ID}-mongo-system" \
   "slscfgs.config.mas.ibm.com ${INSTANCE_ID}-sls-system" \
-  "jdbccfgs.config.mas.ibm.com ${INSTANCE_ID}-jdbc-system"; do
+  "jdbccfgs.config.mas.ibm.com ${INSTANCE_ID}-jdbc-system" \
+  "bascfgs.config.mas.ibm.com ${INSTANCE_ID}-bas-system"; do
   set -- $spec
   kind="$1"; name="$2"
-  oc get "$kind" "$name" -n "$CORE_NS" >/dev/null || {
-    echo "ERROR: missing $CORE_NS/$kind/$name. Sync Suite config and JDBC before Manage." >&2
-    exit 1
-  }
+  wait_resource_ready "$kind" "$name" "$CORE_NS" 1800
 done
+
+wait_suite_ready "$INSTANCE_ID" "$CORE_NS" 3600
 
 echo ">> enabling ENABLE_MANAGE=true in $ENVFILE"
 if grep -q '^ENABLE_MANAGE=' "$ENVFILE"; then

@@ -79,7 +79,16 @@ Prerequisites are ready. MAS account-root remains manual.
 Next:
     ./scripts/sync-mas-account-root.sh $ENVFILE
 
-After SLS is Ready, sync runtime registration:
-    ./scripts/sync-runtime-registration.sh $ENVFILE
+For the IBM-aligned flow, continue with:
+    ./scripts/install-ibm-way.sh --yes $ENVFILE
+
+Or step manually:
+    ./scripts/sync-mas-account-root.sh $ENVFILE
+    ./scripts/sync-runtime-registration.sh --sls-only $ENVFILE
+    ./scripts/enable-sls-config.sh --yes $ENVFILE
+    ./scripts/sync-jdbc-config.sh $ENVFILE
+    ./scripts/sync-runtime-registration.sh --dro-only $ENVFILE
+    ./scripts/enable-bas-config.sh --yes $ENVFILE
+    ./scripts/enable-manage.sh --yes $ENVFILE
 ============================================================
 MSG

@@ -1,7 +1,7 @@
 instanceId: drgitopsapp
 mongo: { namespace: mongo-drgitops, members: 3, version: "6.0.12" }
 jdbc:  { sslEnabled: false }
-dro:   { namespace: ibm-software-central, syncEnabled: false }  # enable after MAS/Manage is stable and DRO is intentionally installed
+dro:   { namespace: ibm-software-central, syncEnabled: true }
 sls:   { syncEnabled: true }
 enable:
   grafana: false

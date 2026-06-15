@@ -50,6 +50,7 @@ set_env_true ENABLE_BAS_CONFIG
 set_env_true MAS_FEATURE_USAGE
 set_env_true MAS_DEPLOYMENT_PROGRESSION
 set_env_true MAS_USABILITY_METRICS
+set_env_true MAS_CONTRACT_PERFORMANCE
 
 (
   cd "$CONFIG_REPO"
@@ -77,4 +78,7 @@ set_env_true MAS_USABILITY_METRICS
 echo ">> refreshing and syncing account-root so bas-system is generated"
 sync_parent_until_child_exists ibm-mas-account-root "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" 900
 hard_refresh_app "${INSTANCE_ID}-bas-system.${CLUSTER_ID}"
-echo ">> BAS config enabled. Sync/monitor ${INSTANCE_ID}-bas-system.${CLUSTER_ID}."
+sync_app_oc "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" false
+wait_app_synced_healthy "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" 1200
+wait_resource_ready bascfgs.config.mas.ibm.com "${INSTANCE_ID}-bas-system" "mas-${INSTANCE_ID}-core" 1800
+echo ">> BAS config enabled and Ready."

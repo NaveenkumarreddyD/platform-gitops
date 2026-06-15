@@ -1,7 +1,8 @@
 # Staged MAS + Manage Bring-Up
 
-This is the safer drroc4 path. It deliberately avoids the old one-shot flow until the install is
-stable. Each phase creates only resources whose prerequisites already exist.
+This is the safer drroc4 path. Each phase creates only resources whose prerequisites already exist.
+For this MAS 8.11 topology, DRO/BAS is treated as a required pre-Manage gate because Suite readiness
+depends on `BasIntegrationReady` when IBM chart defaults enable contract/performance reporting.
 
 Initial config gates in `mas-gitops-config/envs/drroc4.env`:
 
@@ -9,13 +10,29 @@ Initial config gates in `mas-gitops-config/envs/drroc4.env`:
 ENABLE_SLS_CONFIG=false
 ENABLE_MANAGE=false
 ENABLE_BAS_CONFIG=false
-GITOPS_OWNS_DRO=false
+GITOPS_OWNS_DRO=true
 ```
 
 Initial platform gate in `platform-gitops/gitops/envs/drroc4/values.yaml`:
 
 ```yaml
-dro: { namespace: ibm-software-central, syncEnabled: false }
+dro: { namespace: ibm-software-central, syncEnabled: true }
+```
+
+## One Command Path
+
+After `./bootstrap/apply.sh drroc4`, Vault init/unseal, and exporting the required secret inputs,
+run:
+
+```bash
+./scripts/install-ibm-way.sh --yes ../mas-gitops-config/envs/drroc4.env
+```
+
+This runs the supported order:
+
+```text
+Vault/static secrets -> Mongo -> account-root -> SLS registration -> SLSCfg ->
+JdbcCfg -> DRO registration -> BASCfg -> Suite Ready -> Manage
 ```
 
 ## 0. Clean-State Check
@@ -86,6 +103,7 @@ Expected first-stage generated scope:
 
 - IBM operator catalog
 - Suite/Core operator
+- DRO/Data Reporter
 - dedicated SLS
 - workspace
 - MongoCfg only
@@ -96,7 +114,6 @@ Not expected yet:
 - BASCfg
 - ManageApp
 - ManageWorkspace
-- DRO/Data Reporter
 
 Watch:
 
@@ -131,7 +148,23 @@ Verify the three system configs exist:
 oc get mongocfgs,slscfgs,jdbccfgs -n mas-drgitopsapp-core
 ```
 
-## 6. Enable Manage
+## 6. Harvest DRO Registration, Then Enable BASCfg
+
+After DRO has a route and token:
+
+```bash
+./scripts/sync-runtime-registration.sh --dro-only ../mas-gitops-config/envs/drroc4.env
+./scripts/enable-bas-config.sh --yes ../mas-gitops-config/envs/drroc4.env
+```
+
+Verify all system configs and Suite are Ready:
+
+```bash
+oc get mongocfgs,slscfgs,jdbccfgs,bascfgs -n mas-drgitopsapp-core
+oc get suite drgitopsapp -n mas-drgitopsapp-core
+```
+
+## 7. Enable Manage
 
 ```bash
 ./scripts/enable-manage.sh --yes ../mas-gitops-config/envs/drroc4.env
@@ -142,21 +175,6 @@ Watch:
 ```bash
 oc get applications -n openshift-gitops | grep -E 'manage.drroc4.drgitopsapp|drgitopswks'
 oc get pods -n mas-drgitopsapp-manage -w
-```
-
-## 7. Optional DRO/BAS Later
-
-Do this only after MAS + Manage are stable.
-
-1. Set `GITOPS_OWNS_DRO=true` in `mas-gitops-config/envs/drroc4.env`.
-2. Set `dro.syncEnabled: true` in `platform-gitops/gitops/envs/drroc4/values.yaml`.
-3. Render, commit, and push both repos.
-4. Refresh/sync account-root and `platform-drroc4`.
-5. When DRO has a route and token:
-
-```bash
-./scripts/sync-runtime-registration.sh --dro-only ../mas-gitops-config/envs/drroc4.env
-./scripts/enable-bas-config.sh --yes ../mas-gitops-config/envs/drroc4.env
 ```
 
 ## Diagnostics

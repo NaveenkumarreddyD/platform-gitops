@@ -11,7 +11,7 @@ gitops/      app-of-apps generator (self-healing). templates/root/ for the root 
 workloads/   the charts the Applications deploy: operators, mongodb, jdbc, vault-sync,
              vault-unseal (opt-in auto-unseal). Grafana is disabled by default.
 scripts/     imperative glue GitOps can't do (Vault auth, load secrets, runtime registration).
-             install-all.sh is the one-shot orchestrator that chains them all.
+             install-ibm-way.sh is the supported IBM-aligned orchestrator.
 vault-auth/  Vault k8s-auth setup + policies.
 docs/        SETUP-GUIDE.md (step reference), AUTOMATION.md (one-shot flow), STRUCTURE.md.
 ```
@@ -19,8 +19,8 @@ docs/        SETUP-GUIDE.md (step reference), AUTOMATION.md (one-shot flow), STR
 ## Quick start (per cluster, once)
 
 For `drroc4`, use the staged bring-up first: [`docs/STAGED-RUNBOOK.md`](docs/STAGED-RUNBOOK.md).
-It keeps SLSCfg, Manage, and DRO/BAS behind manual gates so OLM/catalog or runtime-secret issues do
-not cascade through the whole MAS tree.
+It keeps each dependency gated, but treats DRO/BAS as required before Manage because MAS Suite
+readiness depends on `BasIntegrationReady` in this topology.
 
 ```bash
 # 1. fill in real repo creds: bootstrap/00-prereqs/repo-creds/
@@ -32,12 +32,13 @@ export VAULT_TOKEN=<root-token-it-prints>
 export IBM_ENTITLEMENT_KEY=... MAS_LICENSE_FILE=/path/license.dat MAS_LICENSE_ID=... \
        JDBC_USERNAME=... JDBC_PASSWORD=... JDBC_URL=...
 
-# 3. ONE command: secrets -> render -> Mongo -> account-root ->
-#    SLS/DRO registration -> BAS -> verify (each step waits for its precondition):
-./scripts/install-all.sh --yes ../mas-gitops-config/envs/<cluster>.env
+# 3. ONE command: secrets -> render -> Mongo -> account-root -> SLSCfg ->
+#    JdbcCfg -> DRO/BAS -> Suite Ready -> Manage:
+./scripts/install-ibm-way.sh --yes ../mas-gitops-config/envs/<cluster>.env
 ```
-Prerequisites-only (old `install-gated.sh` behaviour): `./scripts/install-all.sh --until prereqs <env>`.
-Resume after a transient failure: `./scripts/install-all.sh --from registration <env>`.
+Prerequisites-only: `./scripts/deploy.sh --yes <env>` followed by `./scripts/prepare-prereqs.sh <env>`.
+Resume after a transient failure by rerunning `install-ibm-way.sh`; each stage is guarded by
+readiness checks and idempotent syncs.
 
 Full procedure: [`docs/SETUP-GUIDE.md`](docs/SETUP-GUIDE.md). One-shot + auto-unseal:
 [`docs/AUTOMATION.md`](docs/AUTOMATION.md). Architecture: [`docs/STRUCTURE.md`](docs/STRUCTURE.md).
