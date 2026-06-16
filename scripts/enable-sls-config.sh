@@ -73,8 +73,10 @@ fi
   fi
 )
 
-echo ">> refreshing account-root so ${INSTANCE_ID}-sls-system.${CLUSTER_ID} is generated"
-echo ">> syncing ${INSTANCE_ID}-sls-system.${CLUSTER_ID}"
-sync_parent_until_child_exists ibm-mas-account-root "${INSTANCE_ID}-sls-system.${CLUSTER_ID}" 600
-sync_app_oc "${INSTANCE_ID}-sls-system.${CLUSTER_ID}" true
-wait_app_synced_healthy "${INSTANCE_ID}-sls-system.${CLUSTER_ID}" 1200
+SUITE_APP="suite.${CLUSTER_ID}.${INSTANCE_ID}"
+
+echo ">> refreshing account-root so application/$SUITE_APP picks up SLSCfg"
+echo ">> syncing $SUITE_APP"
+sync_parent_until_child_exists ibm-mas-account-root "$SUITE_APP" 600
+sync_app_oc "$SUITE_APP" true
+wait_app_synced_healthy "$SUITE_APP" 1200

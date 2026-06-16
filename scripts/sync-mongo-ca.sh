@@ -31,7 +31,7 @@ echo ">> patched $KV/$IP/mongo#ca.crt and $KV/$IP/sls-mongo#ca.crt"
 
 oc rollout restart deploy/openshift-gitops-repo-server -n "$ARGO_NS" >/dev/null 2>&1 || true
 oc rollout status deploy/openshift-gitops-repo-server -n "$ARGO_NS" --timeout=180s
-for app in "${INSTANCE_ID}-mongo-system.${CLUSTER_ID}" "${INSTANCE_ID}-sls-system.${CLUSTER_ID}"; do
+for app in "${INSTANCE_ID}-mongo-system.${CLUSTER_ID}" "sls.${CLUSTER_ID}.${INSTANCE_ID}"; do
   oc annotate application "$app" -n "$ARGO_NS" argocd.argoproj.io/refresh=hard --overwrite 2>/dev/null || true
 done
 echo ">> repo-server restarted + mongo/sls apps hard-refreshed."

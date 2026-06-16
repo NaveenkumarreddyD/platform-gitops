@@ -5,9 +5,9 @@
 {{- $c := $root.Values.clusterId -}}
 {{- $i := $root.Values.instanceId -}}
 {{- $apps := "" -}}
-{{- if eq $mode "sls" }}{{- $apps = printf "%s-sls-system.%s" $i $c -}}{{- end -}}
+{{- if eq $mode "sls" }}{{- $apps = printf "suite.%s.%s" $c $i -}}{{- end -}}
 {{- if eq $mode "dro" }}{{- $apps = printf "%s-bas-system.%s" $i $c -}}{{- end -}}
-{{- if eq $mode "mongo" }}{{- $apps = printf "%s-mongo-system.%s %s-sls-system.%s" $i $c $i $c -}}{{- end -}}
+{{- if eq $mode "mongo" }}{{- $apps = printf "%s-mongo-system.%s sls.%s.%s" $i $c $c $i -}}{{- end -}}
 apiVersion: batch/v1
 kind: Job
 metadata:

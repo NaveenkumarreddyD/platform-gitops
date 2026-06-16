@@ -134,7 +134,8 @@ After `licenseservice/sls` has a registration key:
 ```
 
 This writes `secret/mas/drroc4/drgitopsapp/sls` in Vault, flips `ENABLE_SLS_CONFIG=true`,
-renders/commits/pushes config, and syncs `drgitopsapp-sls-system.drroc4`.
+renders/commits/pushes config, and syncs `suite.drroc4.drgitopsapp`, which creates
+the `drgitopsapp-sls-system` SlsCfg.
 
 ## 5. Sync JDBC
 

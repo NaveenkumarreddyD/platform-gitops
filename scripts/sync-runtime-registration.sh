@@ -60,7 +60,7 @@ sync_sls() {
   sync_app_oc "vault-sync-sls-${INSTANCE_ID}" true
   wait_app_synced_healthy "vault-sync-sls-${INSTANCE_ID}" 1200
 
-  hard_refresh_app "${INSTANCE_ID}-sls-system.${CLUSTER_ID}"
+  hard_refresh_app "suite.${CLUSTER_ID}.${INSTANCE_ID}"
   echo ">> SLS registration sync completed."
 }
 
