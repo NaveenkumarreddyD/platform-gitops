@@ -17,6 +17,22 @@ read_ca() {  # $1=namespace ; tries common SLS/DRO cert secrets
   : > /work/ca.pem
 }
 
+read_route_ca() { # $1=https URL; writes the route certificate chain to /work/ca.pem
+  local url="$1" host chain="/work/route-chain.pem"
+  host="${url#https://}"; host="${host%%/*}"; host="${host%%:*}"
+  [ -n "$host" ] || return 1
+  : > "$chain"
+  if command -v openssl >/dev/null 2>&1; then
+    openssl s_client -showcerts -connect "${host}:443" -servername "$host" </dev/null 2>/dev/null |
+      awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > "$chain" || true
+  fi
+  if grep -q 'BEGIN CERTIFICATE' "$chain" 2>/dev/null; then
+    cp "$chain" /work/ca.pem
+    return 0
+  fi
+  return 1
+}
+
 if [ "$MODE" = "sls" ]; then
   NS="${SLS_NS:?}"
   echo ">> waiting for LicenseService Ready in $NS"
@@ -73,7 +89,9 @@ elif [ "$MODE" = "dro" ]; then
   fi
   [ -z "$TOK" ] && { echo "ERROR: DRO api token not found in $NS (set droSync.tokenSecret)"; exit 1; }
   printf '%s' "$TOK" > /work/api_token
-  CA_GREP='(data-reporter|dro).*(cert|tls|ca)'; EXTRA_CA_SECRET="${DRO_CA_SECRET:-}"; read_ca "$NS"
+  if ! read_route_ca "$URL"; then
+    CA_GREP='(data-reporter|dro).*(cert|tls|ca)'; EXTRA_CA_SECRET="${DRO_CA_SECRET:-}"; read_ca "$NS"
+  fi
   echo ">> dro: url=$URL token=${TOK:0:6}… ca=$( [ -s /work/ca.pem ] && echo PEM || echo empty )"
 
 elif [ "$MODE" = "mongo" ]; then
