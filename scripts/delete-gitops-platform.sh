@@ -74,18 +74,52 @@ app_matches(){
   return 1
 }
 
+matching_apps(){
+  oc get applications -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+    | while read -r name; do
+        [[ -n "$name" ]] || continue
+        app_matches "$name" && echo "$name"
+      done
+}
+
+delete_app_cascade(){
+  local name="$1"
+  echo ">> cascade deleting application/$name"
+  if command -v argocd >/dev/null 2>&1; then
+    argocd app terminate-op "$name" >/dev/null 2>&1 || true
+    argocd app delete "$name" --cascade --propagation-policy background --yes >/dev/null 2>&1 && return 0
+  fi
+
+  oc patch application "$name" -n "$ARGO_NS" --type=merge \
+    -p '{"metadata":{"finalizers":["resources-finalizer.argocd.argoproj.io/background"]}}' >/dev/null 2>&1 || true
+  oc delete application "$name" -n "$ARGO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+}
+
+force_delete_app(){
+  local name="$1"
+  echo ">> force deleting stuck application/$name"
+  oc patch application "$name" -n "$ARGO_NS" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+  oc delete application "$name" -n "$ARGO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+}
+
 delete_matching_apps_once(){
   local deleted=0 name
   while read -r name; do
     [[ -n "$name" ]] || continue
-    if app_matches "$name"; then
-      echo ">> deleting application/$name"
-      oc patch application "$name" -n "$ARGO_NS" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
-      oc delete application "$name" -n "$ARGO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-      deleted=1
-    fi
-  done < <(oc get applications -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null || true)
-  return "$deleted"
+    delete_app_cascade "$name"
+    deleted=1
+  done < <(matching_apps)
+  [[ "$deleted" == "1" ]]
+}
+
+force_delete_matching_apps_once(){
+  local deleted=0 name
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    force_delete_app "$name"
+    deleted=1
+  done < <(matching_apps)
+  [[ "$deleted" == "1" ]]
 }
 
 patch_finalizers_for_resource(){
@@ -125,6 +159,17 @@ for _ in $(seq 1 6); do
     break
   fi
 done
+
+if [[ -n "$(matching_apps)" ]]; then
+  echo ">> some Applications are still present; forcing Application finalizer removal"
+  for _ in $(seq 1 3); do
+    if force_delete_matching_apps_once; then
+      sleep 5
+    else
+      break
+    fi
+  done
+fi
 
 say "2. Remove finalizers from MAS and platform resources"
 for ns in "${TARGET_NAMESPACES[@]}"; do
