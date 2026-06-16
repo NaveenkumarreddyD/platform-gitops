@@ -63,6 +63,33 @@ TARGET_NAMESPACES=(
 
 say(){ printf '\n=== %s ===\n' "$*"; }
 
+CONTROLLER_SCALE_FILE="$(mktemp)"
+cleanup(){
+  if [[ -s "$CONTROLLER_SCALE_FILE" ]]; then
+    say "Restoring OpenShift GitOps controllers"
+    while read -r kind name replicas; do
+      [[ -n "$kind" && -n "$name" && -n "$replicas" ]] || continue
+      oc scale "$kind/$name" -n "$ARGO_NS" --replicas="$replicas" >/dev/null 2>&1 || true
+    done < "$CONTROLLER_SCALE_FILE"
+  fi
+  rm -f "$CONTROLLER_SCALE_FILE"
+}
+trap cleanup EXIT
+
+pause_argocd_controllers(){
+  echo ">> pausing Application and ApplicationSet controllers so resources cannot be recreated"
+  oc get deploy,statefulset -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.kind}{" "}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' 2>/dev/null \
+    | while read -r kind name replicas; do
+        [[ -n "$kind" && -n "$name" ]] || continue
+        case "$name" in
+          *application-controller*|*applicationset-controller*)
+            echo "${kind,,} $name ${replicas:-1}" >> "$CONTROLLER_SCALE_FILE"
+            oc scale "${kind,,}/$name" -n "$ARGO_NS" --replicas=0 >/dev/null 2>&1 || true
+            ;;
+        esac
+      done
+}
+
 app_matches(){
   local name="$1"
   [[ "$name" == "platform-${CLUSTER_ID}" ]] && return 0
@@ -80,6 +107,24 @@ matching_apps(){
         [[ -n "$name" ]] || continue
         app_matches "$name" && echo "$name"
       done
+}
+
+matching_appsets(){
+  oc get applicationsets.argoproj.io -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+    | while read -r name; do
+        [[ -n "$name" ]] || continue
+        app_matches "$name" && echo "$name"
+      done
+}
+
+delete_matching_appsets(){
+  local name
+  while read -r name; do
+    [[ -n "$name" ]] || continue
+    echo ">> deleting applicationset/$name"
+    oc patch applicationset "$name" -n "$ARGO_NS" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    oc delete applicationset "$name" -n "$ARGO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  done < <(matching_appsets)
 }
 
 delete_app_cascade(){
@@ -141,6 +186,12 @@ patch_finalizers_in_namespace(){
   oc patch ns "$namespace" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
 }
 
+finalize_namespace(){
+  local namespace="$1"
+  oc get ns "$namespace" >/dev/null 2>&1 || return 0
+  oc patch ns "$namespace" --type=json -p='[{"op":"remove","path":"/spec/finalizers"}]' >/dev/null 2>&1 || true
+}
+
 delete_all_in_namespace(){
   local namespace="$1"
   oc get ns "$namespace" >/dev/null 2>&1 || return 0
@@ -152,6 +203,8 @@ delete_all_in_namespace(){
 }
 
 say "1. Stop Argo CD reconciliation"
+pause_argocd_controllers
+delete_matching_appsets
 for _ in $(seq 1 6); do
   if delete_matching_apps_once; then
     sleep 10
@@ -199,6 +252,7 @@ for ns in "${TARGET_NAMESPACES[@]}"; do
   if oc get ns "$ns" >/dev/null 2>&1; then
     echo ">> deleting namespace/$ns"
     oc patch ns "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    finalize_namespace "$ns"
     oc delete ns "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   fi
 done
