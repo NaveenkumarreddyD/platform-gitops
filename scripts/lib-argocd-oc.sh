@@ -9,6 +9,20 @@ hard_refresh_app() {
   oc annotate application "$app" -n "$ARGO_NS" argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
 }
 
+wait_app_refresh_complete() {
+  local app="${1:?app name}" timeout="${2:-300}" elapsed=0 refresh=""
+  while :; do
+    refresh="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/refresh}' 2>/dev/null || true)"
+    [[ -z "$refresh" ]] && return 0
+    (( elapsed += 5 ))
+    [[ "$elapsed" -ge "$timeout" ]] && {
+      echo "ERROR: timeout waiting for hard refresh to complete for $app" >&2
+      return 1
+    }
+    sleep 5
+  done
+}
+
 wait_app_idle() {
   local app="${1:?app name}" timeout="${2:-600}" elapsed=0 phase=""
   while :; do
@@ -64,6 +78,7 @@ sync_app_oc() {
   local app="${1:?app name}" prune="${2:-false}"
   oc get application "$app" -n "$ARGO_NS" >/dev/null
   hard_refresh_app "$app"
+  wait_app_refresh_complete "$app" 300
   wait_app_idle "$app" 600
   oc patch application "$app" -n "$ARGO_NS" --type merge \
     -p "{\"operation\":{\"initiatedBy\":{\"username\":\"oc\"},\"sync\":{\"prune\":${prune}}}}" >/dev/null
