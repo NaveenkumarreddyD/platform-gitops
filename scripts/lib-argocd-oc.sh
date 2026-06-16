@@ -257,8 +257,8 @@ wait_resource_ready() {
     (( elapsed += 15 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for $namespace/$resource/$name Ready (status=${status:-missing})" >&2
-      oc get "$resource" "$name" -n "$namespace" -o yaml 2>/dev/null | \
-        grep -iA8 -B2 'conditions:\|message:\|reason:\|status:\|type:' || true
+      dump_cr_conditions "$resource" "$name" "$namespace"
+      dump_operator_logs "$namespace" "$(entitymgr_pattern "$resource")" 300
       return 1
     }
     sleep 15
@@ -284,8 +284,16 @@ wait_suite_ready() {
     (( elapsed += 15 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for $namespace/suite/$suite Ready (status=${status:-missing} generation=${generation:-?} observed=${observed:-?})" >&2
-      oc get suite "$suite" -n "$namespace" -o yaml 2>/dev/null | \
-        grep -iA8 -B2 'BasIntegrationReady\|IncompleteConfiguration\|Required condition\|conditions:\|message:\|reason:\|status:\|type:' || true
+      dump_cr_conditions suite "$suite" "$namespace"
+      echo ">> the FIRST non-True condition above is the blocker; common causes:"
+      echo "   SystemDatabaseReady=InvalidConfiguration -> Mongo CA stale: ./scripts/reconcile-mongo-dependent-configs.sh <env>"
+      echo "   SLSIntegrationReady=InvalidConfiguration  -> SLS not in Vault: ./scripts/sync-runtime-registration.sh --sls-only <env>"
+      echo "   BASIntegrationReady=NotConfigured         -> expected until ./scripts/enable-bas-config.sh runs"
+      echo "   a MODULE FAILURE in the operator log below (e.g. 'Get Public Route certificates')"
+      echo "   means the Suite reconcile aborted early -> mas-mongo-config/-credentials/sls-cfg"
+      echo "   never got created. Fix the operator error first (often: load-mas-public-cert.sh)."
+      dump_operator_logs "$namespace" 'ibm-mas-operator' 300
+      dump_operator_logs "$namespace" 'entitymgr-suite' 200
       return 1
     }
     sleep 15
@@ -305,4 +313,66 @@ print_app_diagnostics() {
   echo "-- resource results --"
   oc get application "$app" -n "$ARGO_NS" \
     -o jsonpath='{range .status.operationState.syncResult.resources[*]}{.kind}{"/"}{.name}{"  "}{.status}{"  "}{.message}{"\n"}{end}' 2>/dev/null || true
+}
+
+# --- CR-level diagnostics ---------------------------------------------------
+# The MAS config controllers report "InvalidConfiguration" on a CR while the
+# REAL cause (an ansible "MODULE FAILURE", a Mongo TLS handshake error, an empty
+# AVP-rendered field) is only visible in the entitymgr operator pod logs. These
+# helpers surface that so a timeout is actionable instead of opaque.
+
+# dump_cr_conditions <resource> <name> <namespace>
+dump_cr_conditions() {
+  local res="${1:?resource}" name="${2:?name}" ns="${3:?namespace}"
+  echo "-- $res/$name conditions --"
+  oc get "$res" "$name" -n "$ns" \
+    -o jsonpath='{range .status.conditions[*]}{.type}{"="}{.status}{"  ("}{.reason}{") "}{.message}{"\n"}{end}' 2>/dev/null || true
+}
+
+# dump_operator_logs <namespace> <pod-name-substring> [tail]
+# Prints the filtered tail of the first matching operator pod's log.
+dump_operator_logs() {
+  local ns="${1:?namespace}" pat="${2:?pod pattern}" tail="${3:-300}" pod=""
+  pod="$(oc get pod -n "$ns" --no-headers 2>/dev/null | awk -v p="$pat" '$1 ~ p {print $1; exit}')"
+  [[ -z "$pod" ]] && { echo "   (no pod matching /$pat/ in $ns to pull logs from)"; return 0; }
+  echo "-- operator logs: $ns/$pod (last $tail, error-filtered) --"
+  oc logs -n "$ns" "$pod" --tail="$tail" 2>/dev/null \
+    | grep -iE 'fatal|MODULE FAILURE|failed=|[^a-z]error|unable to|not ready|registration|mongo|certificate|x509|handshake' \
+    | tail -n 40 || true
+}
+
+# entitymgr_pattern <resource> -> entitymgr-<singular>  (mongocfgs.config... -> entitymgr-mongocfg)
+entitymgr_pattern() {
+  local base="${1%%.*}"; base="${base%s}"; printf 'entitymgr-%s' "$base"
+}
+
+# wait_suite_condition <suite> <namespace> <conditionType> [timeout]
+# Waits for ONE Suite condition to reach status True. On timeout it dumps the
+# condition messages and the suite operator logs, then returns 1 (fail fast).
+wait_suite_condition() {
+  local suite="${1:?suite}" ns="${2:?namespace}" cond="${3:?conditionType}" timeout="${4:-1800}"
+  local elapsed=0 status="" reason="" msg="" last=-60
+  while :; do
+    status="$(oc get suite "$suite" -n "$ns" -o jsonpath="{.status.conditions[?(@.type=='$cond')].status}" 2>/dev/null || true)"
+    [[ "$status" == "True" ]] && { echo ">> suite/$suite $cond=True"; return 0; }
+    reason="$(oc get suite "$suite" -n "$ns" -o jsonpath="{.status.conditions[?(@.type=='$cond')].reason}" 2>/dev/null || true)"
+    msg="$(oc get suite "$suite" -n "$ns" -o jsonpath="{.status.conditions[?(@.type=='$cond')].message}" 2>/dev/null || true)"
+    if (( elapsed == 0 || elapsed - last >= 60 )); then
+      echo ">> waiting for suite/$suite $cond=True (status=${status:-?}, reason=${reason:-?}: ${msg:-}) elapsed=${elapsed}s"
+      last="$elapsed"
+    fi
+    (( elapsed += 15 ))
+    [[ "$elapsed" -ge "$timeout" ]] && {
+      echo "ERROR: timeout waiting for suite/$suite $cond (reason=${reason:-?}: ${msg:-})" >&2
+      dump_cr_conditions suite "$suite" "$ns"
+      # The Suite CR is reconciled by the MAS operator (ibm-mas-operator), not the
+      # entitymgr-suite pod. A MODULE FAILURE there (e.g. the "Get Public Route
+      # certificates and key" task NoneType crash from an empty *-cert-public secret)
+      # only shows in this log, so pull both.
+      dump_operator_logs "$ns" 'ibm-mas-operator' 300
+      dump_operator_logs "$ns" 'entitymgr-suite' 200
+      return 1
+    }
+    sleep 15
+  done
 }

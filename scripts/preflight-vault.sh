@@ -127,6 +127,28 @@ fi
 echo "== manage-crypto =="; check_manage_crypto "$IP/manage-crypto"
 echo "== superuser =="; check_creds "$IP/superuser" username password
 
+echo "== mas public cert (manual cert management) =="
+# When the Suite runs with manual certificate management, the mas-certs chart renders
+# Secret <instanceId>-cert-public from this Vault path. If it is empty, the Suite
+# operator task "Get Public Route certificates and key" fails with a NoneType error and
+# aborts the ENTIRE Suite reconcile (no mas-mongo-config / sls-cfg get created). Catch it here.
+if [[ "${MAS_MANUAL_CERT_MGMT:-true}" =~ ^(1|true|yes)$ ]]; then
+  cpath="$IP/certs/public"; certmiss=0
+  for k in tls_crt_b64 tls_key_b64 ca_crt_b64; do
+    cv="$(field "$cpath" "$k")"
+    if [[ -z "$cv" ]]; then
+      no "$cpath#$k missing -> run scripts/load-mas-public-cert.sh <env> <cert.pfx>"; certmiss=1
+    elif ! echo "$cv" | base64 -d 2>/dev/null | grep -q 'BEGIN'; then
+      no "$cpath#$k present but does not base64-decode to PEM"; certmiss=1
+    else
+      ok "$cpath#$k (valid base64 PEM)"
+    fi
+  done
+  [[ "$certmiss" == 0 ]] && ok "MAS public cert complete; Suite route-cert task will not NoneType-fail"
+else
+  ok "MAS_MANUAL_CERT_MGMT=false; skipping public cert check (MAS self-manages route certs)"
+fi
+
 echo "== sls (registration) =="
 rk="$(field "$IP/sls" registration_key)"
 if [[ -z "$rk" ]]; then

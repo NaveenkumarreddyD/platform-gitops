@@ -30,6 +30,26 @@ export VAULT_TOKEN='<vault root/admin token>'
 
 Run this once per cluster. Do not delete Vault PVCs or recreate Vault for a MAS reinstall.
 
+### Load the MAS public certificate (manual cert management)
+
+This cluster runs MAS with **manual certificate management**, so you MUST load the public
+route certificate into Vault before installing. If you skip this, `<instanceId>-cert-public`
+renders empty and the Suite operator's "Get Public Route certificates and key" task fails
+with a NoneType error and aborts the entire Suite reconcile (catalogmgr stuck `Init:0/1`,
+`mas-mongo-config` / `mas-mongo-credentials` / `<instance>-sls-cfg` never created, Suite
+stuck `IncompleteConfiguration`).
+
+```bash
+export VAULT_TOKEN='<vault root/admin token>'
+export PFX_PASSWORD='<pfx password if any>'
+./scripts/load-mas-public-cert.sh ../mas-gitops-config/envs/drroc4.env /path/to/mas-public-cert.pfx
+# verify:
+./scripts/preflight-public-cert.sh ../mas-gitops-config/envs/drroc4.env
+```
+
+The installer also runs `preflight-public-cert.sh` automatically before account-root and
+will stop with this instruction if the cert is missing.
+
 ## MAS Install Or Recreate
 
 For normal MAS install, reinstall, or Manage recreate, reuse the existing Vault:

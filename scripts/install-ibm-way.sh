@@ -42,6 +42,12 @@ banner "2. Configure Vault auth, load static secrets, render and push MAS config
 banner "3. Prepare MongoDB prerequisites and publish Mongo CA"
 ./scripts/prepare-prereqs.sh "$ENVFILE"
 
+banner "3b. Verify MAS public certificate is in Vault (manual cert management)"
+# Gate BEFORE account-root: account-root renders <instanceId>-cert-public from Vault.
+# If the cert path is empty the Suite operator's route-cert task NoneType-fails and
+# aborts the whole Suite reconcile. Fail fast here with a clear instruction instead.
+./scripts/preflight-public-cert.sh "$ENVFILE"
+
 banner "4. Sync MAS account-root"
 ./scripts/sync-mas-account-root.sh "$ENVFILE"
 

@@ -86,4 +86,26 @@ if oc get slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" -n "$CORE_NS" >
   delete_first_pod_matching "$CORE_NS" 'entitymgr-slscfg'
 fi
 
+# A green mongocfg only proves the MongoCfg controller is happy; the SUITE verifies
+# Mongo separately (SystemDatabaseReady). That check used to be skipped here, so a stale
+# CA surfaced much later as the opaque Suite error "MongoDB configuration was unable to be
+# verified". Confirm it now, with one extra entitymgr-suite bounce, before declaring success.
+if oc get suite "$INSTANCE_ID" -n "$CORE_NS" >/dev/null 2>&1; then
+  echo ">> verifying Suite can actually read MongoDB (SystemDatabaseReady)"
+  if ! wait_suite_condition "$INSTANCE_ID" "$CORE_NS" SystemDatabaseReady 900; then
+    echo ">> SystemDatabaseReady still not True; bouncing entitymgr-suite once more"
+    delete_first_pod_matching "$CORE_NS" 'entitymgr-suite'
+    if ! wait_suite_condition "$INSTANCE_ID" "$CORE_NS" SystemDatabaseReady 600; then
+      echo "ERROR: Suite cannot verify MongoDB (SystemDatabaseReady not True). Two common causes:" >&2
+      echo "  1. Stale Mongo CA: live Mongo cert disagrees with" >&2
+      echo "     ${KV_MOUNT:-secret}/${ACCOUNT_ID:-<account>}/$CLUSTER_ID/$INSTANCE_ID/mongo#ca.crt (recreated Mongo?)." >&2
+      echo "  2. The Suite reconcile aborted UPSTREAM (e.g. missing public cert -> 'Get Public Route" >&2
+      echo "     certificates' NoneType failure), so mas-mongo-config/mas-mongo-credentials were never" >&2
+      echo "     created. In that case this is a symptom: read the operator log above and fix the" >&2
+      echo "     upstream failure first (often: ./scripts/load-mas-public-cert.sh <env> <cert.pfx>)." >&2
+      exit 1
+    fi
+  fi
+fi
+
 echo ">> Mongo-dependent MAS config reconciliation completed."
