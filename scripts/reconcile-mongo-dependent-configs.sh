@@ -81,6 +81,7 @@ fi
 
 echo ">> refreshing Suite after Mongo/SLS dependencies"
 hard_refresh_app "suite.${CLUSTER_ID}.${INSTANCE_ID}"
+delete_first_pod_matching "$CORE_NS" 'entitymgr-suite'
 if oc get slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" -n "$CORE_NS" >/dev/null 2>&1; then
   delete_first_pod_matching "$CORE_NS" 'entitymgr-slscfg'
 fi

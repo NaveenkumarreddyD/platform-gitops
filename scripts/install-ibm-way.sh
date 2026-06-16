@@ -3,9 +3,8 @@ set -euo pipefail
 # IBM-aligned staged install:
 #   platform prereqs -> account-root -> SLSCfg -> JdbcCfg -> DRO/BAS -> Suite Ready -> Manage.
 #
-# This script intentionally treats BAS/DRO as a required pre-Manage gate for this topology because
-# MAS 8.11 reports Suite Ready only after BasIntegrationReady when contract/performance reporting is
-# enabled by the IBM chart defaults.
+# BAS/DRO telemetry gates stay disabled until BAS is configured, then are enabled in
+# the BAS stage. This keeps SLS and JDBC from deadlocking on BasIntegrationReady.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"

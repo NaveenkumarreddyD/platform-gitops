@@ -44,11 +44,23 @@ echo ">> waiting for MAS config CRD slscfgs.config.mas.ibm.com"
 wait_crd slscfgs.config.mas.ibm.com 1800
 
 echo ">> enabling ENABLE_SLS_CONFIG=true in $ENVFILE"
-if grep -q '^ENABLE_SLS_CONFIG=' "$ENVFILE"; then
-  perl -0pi -e 's/^ENABLE_SLS_CONFIG=.*/ENABLE_SLS_CONFIG=true/m' "$ENVFILE"
-else
-  printf '\nENABLE_SLS_CONFIG=true\n' >> "$ENVFILE"
-fi
+set_env_value() {
+  local key="${1:?key}" value="${2:?value}"
+  if grep -q "^${key}=" "$ENVFILE"; then
+    perl -0pi -e "s/^${key}=.*/${key}=${value}/m" "$ENVFILE"
+  else
+    printf '\n%s=%s\n' "$key" "$value" >> "$ENVFILE"
+  fi
+}
+
+set_env_value ENABLE_SLS_CONFIG true
+
+echo ">> keeping BAS/telemetry gates disabled until enable-bas-config.sh"
+set_env_value ENABLE_BAS_CONFIG false
+set_env_value MAS_FEATURE_USAGE false
+set_env_value MAS_DEPLOYMENT_PROGRESSION false
+set_env_value MAS_USABILITY_METRICS false
+set_env_value MAS_CONTRACT_PERFORMANCE false
 
 (
   cd "$CONFIG_REPO"
@@ -81,3 +93,10 @@ echo ">> syncing $SUITE_APP"
 sync_parent_until_child_exists ibm-mas-account-root "$SUITE_APP" 600
 sync_app_oc "$SUITE_APP" true
 wait_app_synced_healthy "$SUITE_APP" 1200
+
+CORE_NS="mas-${INSTANCE_ID}-core"
+SUITE_POD="$(oc get pod -n "$CORE_NS" --no-headers 2>/dev/null | awk '/entitymgr-suite/ {print $1; exit}')"
+if [[ -n "$SUITE_POD" ]]; then
+  echo ">> deleting pod/$SUITE_POD in $CORE_NS so Suite controller re-reads updated gates"
+  oc delete pod "$SUITE_POD" -n "$CORE_NS" --ignore-not-found
+fi
