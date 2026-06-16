@@ -46,28 +46,31 @@ banner "3. Prepare MongoDB prerequisites and publish Mongo CA"
 banner "4. Sync MAS account-root"
 ./scripts/sync-mas-account-root.sh "$ENVFILE"
 
-banner "5. Harvest SLS registration and enable SLSCfg"
+banner "5. Reconcile Mongo CA consumers"
+./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
+
+banner "6. Harvest SLS registration and enable SLSCfg"
 ./scripts/sync-runtime-registration.sh --sls-only "$ENVFILE"
 ./scripts/enable-sls-config.sh "${YES_ARGS[@]}" "$ENVFILE"
 wait_resource_ready slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" "$CORE_NS" 1800
 
-banner "6. Sync JdbcCfg"
+banner "7. Sync JdbcCfg"
 ./scripts/sync-jdbc-config.sh "$ENVFILE"
 wait_resource_ready jdbccfgs.config.mas.ibm.com "${INSTANCE_ID}-jdbc-system" "$CORE_NS" 1800
 
-banner "7. Harvest DRO registration and enable BASCfg"
+banner "8. Harvest DRO registration and enable BASCfg"
 ./scripts/sync-runtime-registration.sh --dro-only "$ENVFILE"
 ./scripts/enable-bas-config.sh "${YES_ARGS[@]}" "$ENVFILE"
 wait_resource_ready bascfgs.config.mas.ibm.com "${INSTANCE_ID}-bas-system" "$CORE_NS" 1800
 
-banner "8. Wait for Suite Ready"
+banner "9. Wait for Suite Ready"
 wait_resource_ready mongocfgs.config.mas.ibm.com "${INSTANCE_ID}-mongo-system" "$CORE_NS" 1800
 wait_suite_ready "$INSTANCE_ID" "$CORE_NS" 3600
 
-banner "9. Enable Manage"
+banner "10. Enable Manage"
 ./scripts/enable-manage.sh "${YES_ARGS[@]}" "$ENVFILE"
 
-banner "10. Summary"
+banner "11. Summary"
 ./scripts/status-summary.sh "$ENVFILE" || true
 ./scripts/verify-install.sh "$ENVFILE"
 
