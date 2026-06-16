@@ -53,3 +53,27 @@ oc exec -n "$VAULT_NS" "$VAULT_POD" -- sh -c "
 "
 
 echo ">> wrote MAS public certificate material to $PATH_KV"
+
+# Self-check: read each field back and confirm ONE base64 decode yields PEM. This
+# catches the double-encoding trap (source that was already base64 text, not raw PEM),
+# which renders a secret whose value decodes to base64 instead of a certificate and
+# makes the Suite operator's route-cert task fail. Single base64(PEM) is the contract
+# the mas-certs chart's `data:` block depends on.
+echo ">> verifying stored values are single base64 of PEM (guards against double-encoding)"
+readback() { oc exec -n "$VAULT_NS" "$VAULT_POD" -- sh -c \
+  "export VAULT_ADDR=$VADDR VAULT_TOKEN='$VAULT_TOKEN'; vault kv get -field='$2' '$1'" 2>/dev/null; }
+verr=0
+check_pem() { # field marker
+  local v; v="$(readback "$PATH_KV" "$1")"
+  if echo "$v" | base64 -d 2>/dev/null | grep -q "BEGIN.*$2"; then
+    echo "   PASS $1 -> single base64 of a PEM '$2'"
+  else
+    echo "   FAIL $1 -> does NOT decode to a PEM '$2' (looks double-encoded). Provide RAW PEM/PFX, not base64." >&2
+    verr=1
+  fi
+}
+check_pem tls_crt_b64 CERTIFICATE
+check_pem tls_key_b64 'PRIVATE KEY'
+check_pem ca_crt_b64  CERTIFICATE
+[[ "$verr" -eq 0 ]] || { echo "ERROR: stored cert material failed validation; not safe to render." >&2; exit 1; }
+echo ">> verified: tls/key/ca each decode to PEM in a single step."

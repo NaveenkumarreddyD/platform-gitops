@@ -17,15 +17,24 @@ spec:
     repoURL: {{ .Values.platform.repo_url | quote }}
     targetRevision: {{ .Values.platform.revision | quote }}
     path: workloads/mas-certs
-    helm:
-      values: |
-        instanceId: {{ .Values.instanceId }}
-        workspaceId: {{ .Values.workspaceId }}
-        certPath: {{ include "gitops.path" . }}/certs/public
-        core:
-          enabled: {{ .Values.masCerts.core }}
-        manage:
-          enabled: {{ .Values.masCerts.manage }}
+    # MUST render through the Argo CD Vault Plugin: this chart's Secret templates contain
+    # <path:...#tls_crt_b64> placeholders that only AVP can resolve. Using `source.helm`
+    # here renders with native Helm and ships the literal "<path:...>" string into the
+    # Secret data, which fails apply with "illegal base64 data at input byte 0". So we use
+    # the AVP CMP sidecar (same plugin the account-root children use) and pass values via
+    # the HELM_VALUES env the CMP's generate command reads ($ARGOCD_ENV_HELM_VALUES).
+    plugin:
+      name: argocd-vault-plugin-helm
+      env:
+        - name: HELM_VALUES
+          value: |
+            instanceId: {{ .Values.instanceId }}
+            workspaceId: {{ .Values.workspaceId }}
+            certPath: {{ include "gitops.path" . }}/certs/public
+            core:
+              enabled: {{ .Values.masCerts.core }}
+            manage:
+              enabled: {{ .Values.masCerts.manage }}
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     retry:
