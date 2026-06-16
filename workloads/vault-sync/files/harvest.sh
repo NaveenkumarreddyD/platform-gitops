@@ -24,23 +24,24 @@ if [ "$MODE" = "sls" ]; then
   until {
     initialized="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
     registration_key="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
-    [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ]]
+    cm_registration_key="$(oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.registrationKey}' 2>/dev/null || true)"
+    cm_ca="$(oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.ca}' 2>/dev/null || true)"
+    [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" || ( -n "$cm_registration_key" && "$cm_ca" == *"BEGIN CERTIFICATE"* ) ]]
   }; do
     i=$((i+1)); [ "$i" -gt "$RETRIES" ] && { echo "timeout waiting for SLS Ready"; exit 1; }
     sleep "$INTERVAL"
   done
-  RK="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
-  [ -z "$RK" ] && RK="$(oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.registrationKey}' 2>/dev/null || true)"
+  RK="$(oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.registrationKey}' 2>/dev/null || true)"
+  [ -z "$RK" ] && RK="$(oc get licenseservices.sls.ibm.com -n "$NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
   [ -z "$RK" ] && { echo "ERROR: no SLS registrationKey in $NS"; exit 1; }
-  # Assumes the IBM SLS operator creates a Service named "sls" on 443 in $NS.
-  # If the actual Service name/port differs (check: oc get svc -n $NS), set SLS_URL_OVERRIDE
-  # (or slsSync.urlOverride) to the correct in-cluster URL or the SLS Route host.
-  URL="${SLS_URL_OVERRIDE:-https://sls.${NS}.svc.cluster.local}"
+  URL="${SLS_URL_OVERRIDE:-$(oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.url}' 2>/dev/null || true)}"
+  [ -z "$URL" ] && URL="https://sls.${NS}.svc.cluster.local"
   printf '%s' "$RK"  > /work/registration_key
   printf '%s' "$URL" > /work/url
   CA_GREP='sls.*(cert|tls|ca)'; EXTRA_CA_SECRET="sls-cert sls-tls sls-ca"; i=0
   until {
-    read_ca "$NS"
+    oc get cm sls-suite-registration -n "$NS" -o jsonpath='{.data.ca}' > /work/ca.pem 2>/dev/null || true
+    grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null || read_ca "$NS"
     grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null
   }; do
     i=$((i+1))
