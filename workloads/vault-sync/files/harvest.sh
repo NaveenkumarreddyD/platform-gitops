@@ -38,7 +38,19 @@ if [ "$MODE" = "sls" ]; then
   URL="${SLS_URL_OVERRIDE:-https://sls.${NS}.svc.cluster.local}"
   printf '%s' "$RK"  > /work/registration_key
   printf '%s' "$URL" > /work/url
-  CA_GREP='sls.*(cert|tls)'; EXTRA_CA_SECRET="sls-cert sls-tls"; read_ca "$NS"
+  CA_GREP='sls.*(cert|tls|ca)'; EXTRA_CA_SECRET="sls-cert sls-tls sls-ca"; i=0
+  until {
+    read_ca "$NS"
+    grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null
+  }; do
+    i=$((i+1))
+    [ "$i" -gt "$RETRIES" ] && {
+      echo "ERROR: timeout waiting for SLS CA certificate in $NS"
+      oc get secret -n "$NS" 2>/dev/null | grep -Ei 'sls|cert|tls|ca' || true
+      exit 1
+    }
+    sleep "$INTERVAL"
+  done
   echo ">> sls: rk=${RK:0:8}… url=$URL ca=$( [ -s /work/ca.pem ] && echo PEM || echo empty )"
 
 elif [ "$MODE" = "dro" ]; then
