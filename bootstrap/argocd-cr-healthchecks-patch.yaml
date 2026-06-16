@@ -450,28 +450,12 @@ spec:
           hs.message = "Provisioning Db2 instance..."
           return hs
 
-      marketplace.redhat.com/MarketplaceConfig:
-        health.lua: |
-          hs = {}
-          if obj.status ~= nil then
-            if obj.status.conditions ~= nil then
-              for i, condition in ipairs(obj.status.conditions) do
-                if condition.type == "Complete" and condition.status == "False" then
-                  hs.status = "Degraded"
-                  hs.message = condition.message
-                  return hs
-                end
-                if condition.type == "Complete" and condition.status == "True" then
-                  hs.status = "Healthy"
-                  hs.message = condition.message
-                  return hs
-                end
-              end
-            end
-          end
-          hs.status = "Progressing"
-          hs.message = ""
-          return hs
+      # NOTE: marketplace.redhat.com/MarketplaceConfig healthcheck intentionally OMITTED.
+      # On clusters without a working Red Hat Marketplace registration the MarketplaceConfig
+      # never reaches Complete=True, so this check would make ArgoCD block the DRO app forever
+      # ("waiting for healthy state of .../MarketplaceConfig/marketplaceconfig"). Leaving it out
+      # lets ArgoCD treat the CR as Healthy by default, so DRO (which uses the IBM entitlement,
+      # not RHM metering) can come up regardless of RHM registration state.
 
       argoproj.io/Application:
         health.lua: |
