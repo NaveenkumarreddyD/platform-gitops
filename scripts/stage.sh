@@ -121,11 +121,21 @@ do_stage() {
       ;;
     account-root)
       ./scripts/sync-mas-account-root.sh "$ENVFILE"
-      echo ">> verify: Suite CR generated and config CRDs registered"
+      echo ">> verify: config CRDs registered and Suite CR generated"
       wait_crd suites.core.mas.ibm.com 1800
       wait_crd slscfgs.config.mas.ibm.com 1800
-      oc get suite "$INSTANCE_ID" -n "$CORE_NS" >/dev/null 2>&1 \
-        || { echo "ERROR: suite/$INSTANCE_ID not created by account-root" >&2; exit 1; }
+      # The Suite CR is created asynchronously by the account-root cascade
+      # (ApplicationSet git generator -> instance app -> Suite CR), which lags the
+      # account-root sync. Wait for it instead of checking instantly.
+      if ! wait_resource_exists suite "$INSTANCE_ID" "$CORE_NS" 1200; then
+        echo "ERROR: suite/$INSTANCE_ID was not generated within timeout." >&2
+        echo "       The account-root ApplicationSets generate it from the config repo (git poll ~3min)." >&2
+        echo "       Check the cascade:" >&2
+        echo "         oc get applicationsets -n $ARGO_NS" >&2
+        echo "         oc get applications -n $ARGO_NS | grep -E '$CLUSTER_ID|$INSTANCE_ID'" >&2
+        echo "       and that the rendered config was pushed to the git the generators read." >&2
+        exit 1
+      fi
       ;;
     catalog)
       # Version gate: the IBM operator catalog (created by account-root) must expose the
