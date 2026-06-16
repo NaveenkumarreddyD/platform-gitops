@@ -1,3 +1,7 @@
 *.bak
 *.tmp
+*.orig
+*~
 .DS_Store
+# runtime install checkpoint state written by scripts/stage.sh
+.install-state/

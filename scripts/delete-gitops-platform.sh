@@ -9,22 +9,22 @@ set -euo pipefail
 # Usage:
 #   ./scripts/delete-gitops-platform.sh --confirm ../mas-gitops-config/envs/drroc4.env
 #   ./scripts/delete-gitops-platform.sh --confirm --include-vault ../mas-gitops-config/envs/drroc4.env
-#   ./scripts/delete-gitops-platform.sh --confirm --include-vault --leave-controllers-paused ../mas-gitops-config/envs/drroc4.env
+#
+# The Argo CD controllers are paused for the duration of the cleanup (so resources cannot be
+# recreated) and ALWAYS restored automatically when the script finishes.
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"
 
 CONFIRM=0
 INCLUDE_VAULT=0
-LEAVE_CONTROLLERS_PAUSED=0
 ENVFILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRM=1; shift ;;
     --include-vault) INCLUDE_VAULT=1; shift ;;
-    --leave-controllers-paused) LEAVE_CONTROLLERS_PAUSED=1; shift ;;
     -h|--help)
-      sed -n '1,13p' "$0"
+      sed -n '1,15p' "$0"
       exit 0
       ;;
     *) ENVFILE="$1"; shift ;;
@@ -50,7 +50,7 @@ Will delete GitOps platform/instance resources for:
   DRO ns:   $DRO_NAMESPACE
 
 Vault is preserved unless --include-vault is passed.
-OpenShift GitOps controllers are restored at the end unless --leave-controllers-paused is passed.
+OpenShift GitOps controllers are paused during cleanup and always restored at the end.
 MSG
   exit 0
 fi
@@ -67,24 +67,21 @@ TARGET_NAMESPACES=(
 
 say(){ printf '\n=== %s ===\n' "$*"; }
 
+STATE_DIR="$ROOT/.install-state"; mkdir -p "$STATE_DIR"
+PERSIST_SCALE_FILE="$STATE_DIR/gitops-controllers.scale"
 CONTROLLER_SCALE_FILE="$(mktemp)"
 cleanup(){
-  if [[ "$LEAVE_CONTROLLERS_PAUSED" == "1" ]]; then
-    if [[ -s "$CONTROLLER_SCALE_FILE" ]]; then
-      say "Leaving OpenShift GitOps controllers paused"
-      echo "Restore manually after cleanup is verified:"
-      while read -r kind name replicas; do
-        [[ -n "$kind" && -n "$name" && -n "$replicas" ]] || continue
-        echo "  oc scale $kind/$name -n $ARGO_NS --replicas=$replicas"
-      done < "$CONTROLLER_SCALE_FILE"
-    fi
-  elif [[ -s "$CONTROLLER_SCALE_FILE" ]]; then
+  # Always bring the Argo CD controllers back to their original replica counts.
+  if [[ -s "$CONTROLLER_SCALE_FILE" ]]; then
     say "Restoring OpenShift GitOps controllers"
     while read -r kind name replicas; do
       [[ -n "$kind" && -n "$name" && -n "$replicas" ]] || continue
+      echo ">> oc scale $kind/$name -n $ARGO_NS --replicas=$replicas"
       oc scale "$kind/$name" -n "$ARGO_NS" --replicas="$replicas" >/dev/null 2>&1 || true
     done < "$CONTROLLER_SCALE_FILE"
   fi
+  # Teardown finished cleanly and controllers are restored: drop the safety-net state file.
+  rm -f "$PERSIST_SCALE_FILE" 2>/dev/null || true
   rm -f "$CONTROLLER_SCALE_FILE"
 }
 trap cleanup EXIT
@@ -101,6 +98,9 @@ pause_argocd_controllers(){
             ;;
         esac
       done
+  # Safety net: persist the original counts so restore-gitops-controllers.sh can recover
+  # them even if this script is hard-killed before its restore trap runs.
+  [[ -s "$CONTROLLER_SCALE_FILE" ]] && cp "$CONTROLLER_SCALE_FILE" "$PERSIST_SCALE_FILE" 2>/dev/null || true
 }
 
 app_matches(){

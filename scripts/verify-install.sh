@@ -82,9 +82,15 @@ oc get ns "$DRO_NS" >/dev/null 2>&1 && ok "namespace/$DRO_NS exists" || no "name
 oc get route -n "$DRO_NS" 2>/dev/null | grep -qiE 'data-reporter|dro' && ok "DRO route exists" || no "DRO route missing"
 
 echo
-echo "== Target versions =="
-csv_contains "$CORE_NS" "ibm-mas.*8\\.11\\.26|ibm-mas\\.v8\\.11\\.26" "MAS target ${MAS_TARGET_VERSION:-8.11.26}"
-csv_contains "$MANAGE_NS" "ibm-mas-manage.*8\\.7\\.24|ibm-mas-manage\\.v8\\.7\\.24" "Manage target ${MANAGE_TARGET_VERSION:-8.7.24}"
+echo "== Target versions (from env: MAS_TARGET_VERSION / MANAGE_TARGET_VERSION) =="
+if [[ -z "${MAS_TARGET_VERSION:-}" || -z "${MANAGE_TARGET_VERSION:-}" ]]; then
+  no "MAS_TARGET_VERSION / MANAGE_TARGET_VERSION must be set in the env to verify deployed versions"
+else
+  mas_tv_re="${MAS_TARGET_VERSION//./\\.}"
+  manage_tv_re="${MANAGE_TARGET_VERSION//./\\.}"
+  csv_contains "$CORE_NS"   "ibm-mas[^ ]*${mas_tv_re}|ibm-mas\\.v${mas_tv_re}"            "MAS CSV == ${MAS_TARGET_VERSION}"
+  csv_contains "$MANAGE_NS" "ibm-mas-manage[^ ]*${manage_tv_re}|ibm-mas-manage\\.v${manage_tv_re}" "Manage CSV == ${MANAGE_TARGET_VERSION}"
+fi
 
 echo
 if [[ "$fail" -eq 0 ]]; then

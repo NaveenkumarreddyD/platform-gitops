@@ -17,7 +17,9 @@ read_ca() {  # $1=namespace ; tries common SLS/DRO cert secrets
   : > /work/ca.pem
 }
 
-read_route_ca() { # $1=https URL; writes the route CA bundle to /work/ca.pem
+read_route_ca() { # $1=https URL; writes the served CA bundle to /work/ca.pem. FALLBACK ONLY:
+  # the official IBM jobs read the CA from a Secret/ConfigMap, not a handshake. We keep this
+  # as a last resort for environments where the CA secret isn't populated.
   local url="$1" host chain="/work/route-chain.pem" cert_count
   host="${url#https://}"; host="${host%%/*}"; host="${host%%:*}"
   [ -n "$host" ] || return 1
@@ -86,10 +88,11 @@ elif [ "$MODE" = "dro" ]; then
     [ -n "$H" ] && URL="https://$H" || URL="https://ibm-data-reporter.${NS}.svc.cluster.local:3000"
   fi
   printf '%s' "$URL" > /work/url
+  # Official IBM method: token comes from Secret ibm-data-reporter-operator-api-token (field 'token').
   TOK="${DRO_TOKEN_OVERRIDE:-}"
   if [ -z "$TOK" ]; then
-    for s in ${DRO_TOKEN_SECRET:-} $(oc get secret -n "$NS" -o name 2>/dev/null | grep -iE 'data-reporter|dro' | sed 's#secret/##'); do
-      for k in api_key apikey token api-token; do
+    for s in ${DRO_TOKEN_SECRET:-} ibm-data-reporter-operator-api-token $(oc get secret -n "$NS" -o name 2>/dev/null | grep -iE 'data-reporter|dro' | sed 's#secret/##'); do
+      for k in token api_key apikey api-token; do
         TOK="$(oc get secret "$s" -n "$NS" -o jsonpath="{.data.$k}" 2>/dev/null | base64 -d 2>/dev/null || true)"
         [ -n "$TOK" ] && break 2
       done
@@ -97,8 +100,15 @@ elif [ "$MODE" = "dro" ]; then
   fi
   [ -z "$TOK" ] && { echo "ERROR: DRO api token not found in $NS (set droSync.tokenSecret)"; exit 1; }
   printf '%s' "$TOK" > /work/api_token
-  if ! read_route_ca "$URL"; then
-    CA_GREP='(data-reporter|dro).*(cert|tls|ca)'; EXTRA_CA_SECRET="${DRO_CA_SECRET:-}"; read_ca "$NS"
+  # Official IBM method: the DRO CA ships in the SAME secret (field ca.crt). Prefer that; fall
+  # back to a TLS handshake, then a broad cert-secret grep, only if the secret lacks a CA.
+  : > /work/ca.pem
+  for s in ${DRO_CA_SECRET:-} ibm-data-reporter-operator-api-token $(oc get secret -n "$NS" -o name 2>/dev/null | grep -iE 'data-reporter|dro' | sed 's#secret/##'); do
+    oc get secret "$s" -n "$NS" -o jsonpath='{.data.ca\.crt}' 2>/dev/null | base64 -d > /work/ca.pem 2>/dev/null || true
+    grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null && break
+  done
+  if ! grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null; then
+    read_route_ca "$URL" || { CA_GREP='(data-reporter|dro).*(cert|tls|ca)'; EXTRA_CA_SECRET="${DRO_CA_SECRET:-}"; read_ca "$NS"; }
   fi
   echo ">> dro: url=$URL token=${TOK:0:6}… ca=$( [ -s /work/ca.pem ] && echo PEM || echo empty )"
 

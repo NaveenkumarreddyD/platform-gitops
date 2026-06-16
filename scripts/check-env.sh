@@ -30,6 +30,14 @@ for k in CLUSTER_URL MAS_DOMAIN MONGO_NS; do
   [[ -n "$v" && "$v" != CHANGE_ME* && "$v" != *CHANGE_ME* ]] && ok "$k=$v" || no "$k is unset or still CHANGE_ME"
 done
 
+echo "== versions (pin what gets deployed) =="
+# Channels select the operator stream; target versions pin the exact CSV. Both must be set,
+# and must be carried by the operator-catalog image, or you get the wrong MAS/Manage version.
+for k in MAS_CHANNEL SLS_CHANNEL MAS_APP_CHANNEL MAS_TARGET_VERSION MANAGE_TARGET_VERSION; do
+  v="${!k:-}"
+  [[ -n "$v" ]] && ok "$k=$v" || no "$k unset (required to control the deployed version)"
+done
+
 echo "== required secret inputs =="
 [[ -n "${VAULT_TOKEN:-}" ]] && ok "VAULT_TOKEN exported" || no "export VAULT_TOKEN first"
 if [[ "${CHECK_SECRET_INPUTS:-true}" =~ ^([Ff][Aa][Ll][Ss][Ee]|0|[Nn][Oo])$ ]]; then
