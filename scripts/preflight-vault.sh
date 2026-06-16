@@ -131,8 +131,22 @@ echo "== sls (registration) =="
 rk="$(field "$IP/sls" registration_key)"
 if [[ -z "$rk" ]]; then
   printf '  \033[33mWARN\033[0m  %s\n' "$IP/sls#registration_key empty -> OK only if SLS not yet deployed (own-SLS) OR using centralized SLS not yet wired. Run scripts/sync-runtime-registration.sh after SLS is Ready (harvests SLS/DRO into Vault via the in-cluster vault-sync jobs)."
-else ok "$IP/sls#registration_key"; check_ca "$IP/sls" ca.crt
-  [[ -n "$(field "$IP/sls" url)" ]] && ok "$IP/sls#url" || no "$IP/sls#url missing"; fi
+else
+  ok "$IP/sls#registration_key"
+  if [[ "${REQUIRE_SLS_REGISTRATION:-false}" =~ ^(1|true|yes)$ ]]; then
+    check_ca "$IP/sls" ca.crt
+    [[ -n "$(field "$IP/sls" url)" ]] && ok "$IP/sls#url" || no "$IP/sls#url missing"
+  else
+    sca="$(field "$IP/sls" ca.crt)"
+    surl="$(field "$IP/sls" url)"
+    if [[ -n "$sca" && -n "$surl" ]]; then
+      check_ca "$IP/sls" ca.crt
+      ok "$IP/sls#url"
+    else
+      printf '  \033[33mWARN\033[0m  %s\n' "$IP/sls runtime registration is partial; enable-sls-config.sh will require registration_key, url, and ca.crt after sync-runtime-registration.sh --sls-only."
+    fi
+  fi
+fi
 
 echo
 [[ $fail -eq 0 ]] && echo "PREFLIGHT($PHASE): required secrets present & well-formed." \

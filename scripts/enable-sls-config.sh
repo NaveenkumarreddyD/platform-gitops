@@ -35,6 +35,7 @@ field() {
 }
 
 echo ">> verifying SLS registration values exist in Vault before enabling SLSCfg"
+REQUIRE_SLS_REGISTRATION=true ./scripts/preflight-vault.sh --phase full "$ENVFILE" >/dev/null
 for k in registration_key url ca.crt; do
   [[ -n "$(field "$IP/sls" "$k")" ]] || { echo "ERROR: missing $KV/$IP/sls#$k. Run sync-runtime-registration.sh --sls-only first."; exit 1; }
 done
