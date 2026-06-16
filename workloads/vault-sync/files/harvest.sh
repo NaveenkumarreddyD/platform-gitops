@@ -78,20 +78,25 @@ if [ "$MODE" = "sls" ]; then
     }
     sleep "$INTERVAL"
   done
-  # PERMANENT FIX for the recurring SLSCfg registration error
-  #   "CERTIFICATE_VERIFY_FAILED: self signed certificate in certificate chain".
-  # The SLSCfg TLS-verifies the cert served at $URL (sls.<ns>.svc:443). The cm 'ca' is supposed
-  # to be that CA, but on self-signed/internal SLS it often doesn't fully cover the served chain.
-  # So append the LIVE served chain from $URL to the trust bundle — the resulting bundle trusts
-  # whatever actually signs the SLS endpoint, regardless of what the cm published.
+  # UPSTREAM-NATIVE primary path: trust ONLY the cm 'ca' (already in /work/ca.pem) — this is
+  # exactly what IBM's official 07-postsync-update-sm job does. We then VERIFY that cm 'ca'
+  # actually validates the cert served at $URL. Only if it does NOT (CA drift between the
+  # published cm 'ca' and the live serving cert, which is what caused CERTIFICATE_VERIFY_FAILED)
+  # do we fall back to appending the live served chain. So a healthy SLS stays byte-for-byte
+  # upstream; the fallback self-heals drift instead of failing.
   sls_host="${URL#https://}"; sls_host="${sls_host%%/*}"; sls_host="${sls_host%%:*}"
   if [ -n "$sls_host" ] && command -v openssl >/dev/null 2>&1; then
-    if openssl s_client -showcerts -connect "${sls_host}:443" -servername "$sls_host" </dev/null 2>/dev/null \
-         | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > /work/sls-served.pem && \
-       grep -q 'BEGIN CERTIFICATE' /work/sls-served.pem 2>/dev/null; then
-      printf '\n' >> /work/ca.pem
-      cat /work/sls-served.pem >> /work/ca.pem
-      echo ">> sls: appended live served CA chain from ${sls_host}:443 to the trust bundle"
+    if echo | openssl s_client -connect "${sls_host}:443" -servername "$sls_host" \
+         -CAfile /work/ca.pem -verify_return_error </dev/null >/dev/null 2>&1; then
+      echo ">> sls: cm 'ca' validates the served cert (upstream-native; no append needed)"
+    else
+      echo ">> sls: cm 'ca' does NOT validate the served cert (CA drift) — appending live served chain as fallback"
+      openssl s_client -showcerts -connect "${sls_host}:443" -servername "$sls_host" </dev/null 2>/dev/null \
+        | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > /work/sls-served.pem || true
+      if grep -q 'BEGIN CERTIFICATE' /work/sls-served.pem 2>/dev/null; then
+        printf '\n' >> /work/ca.pem
+        cat /work/sls-served.pem >> /work/ca.pem
+      fi
     fi
   fi
   echo ">> sls: rk=${RK:0:8}… url=$URL ca=$( [ -s /work/ca.pem ] && echo PEM || echo empty )"
