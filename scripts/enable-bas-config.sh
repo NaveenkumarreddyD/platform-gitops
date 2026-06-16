@@ -68,6 +68,7 @@ set_env_true MAS_CONTRACT_PERFORMANCE
     if [[ "$a" == y ]]; then
       git commit -m "enable BAS config for $CLUSTER"
       git push
+      wait_config_repo_published "$CONFIG_REPO" "$CLUSTER" 300
     else
       echo "ERROR: BAS config not pushed; account-root cannot pick it up." >&2
       exit 1

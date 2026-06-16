@@ -9,6 +9,77 @@ hard_refresh_app() {
   oc annotate application "$app" -n "$ARGO_NS" argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
 }
 
+yaml_inline_value() {
+  local file="${1:?file}" map="${2:?map}" key="${3:?key}"
+  [[ -f "$file" ]] || return 0
+  perl -ne '
+    BEGIN { ($map, $key) = splice(@ARGV, 0, 2); }
+    if (/\Q$map\E:\s*\{[^}]*\Q$key\E:\s*"?([^",} ]+)/) {
+      print "$1\n";
+      exit 0;
+    }
+  ' "$map" "$key" "$file" 2>/dev/null || true
+}
+
+cluster_generator_setting() {
+  local cluster="${1:?cluster}" key="${2:?key}" value=""
+  for file in "gitops/envs/$cluster/common.yaml" "gitops/envs/$cluster/values.yaml" "gitops/values.yaml"; do
+    value="$(yaml_inline_value "$file" generator "$key")"
+    [[ -n "$value" ]] && {
+      printf '%s\n' "$value"
+      return 0
+    }
+  done
+}
+
+wait_config_repo_published() {
+  local config_repo="${1:?config repo}" cluster="${2:?cluster}" timeout="${3:-300}"
+  local expected="" repo_url="" revision="" elapsed=0 remote_sha=""
+
+  [[ "${SKIP_GIT_PUBLISH_WAIT:-false}" == "true" ]] && {
+    echo ">> SKIP_GIT_PUBLISH_WAIT=true; not waiting for Argo config repo visibility"
+    return 0
+  }
+
+  expected="$(git -C "$config_repo" rev-parse HEAD)"
+  repo_url="$(cluster_generator_setting "$cluster" repo_url)"
+  revision="$(cluster_generator_setting "$cluster" revision)"
+  repo_url="${repo_url:-$(git -C "$config_repo" config --get remote.origin.url || true)}"
+  revision="${revision:-$(git -C "$config_repo" branch --show-current || true)}"
+  revision="${revision:-main}"
+
+  [[ -n "$repo_url" ]] || {
+    echo "ERROR: cannot determine MAS config generator repo URL for cluster $cluster" >&2
+    return 1
+  }
+
+  echo ">> waiting for Argo MAS config repo to expose $revision=$expected"
+  echo "   repo: $repo_url"
+  while :; do
+    remote_sha="$(git ls-remote "$repo_url" "refs/heads/$revision" 2>/dev/null | awk '{print $1; exit}')"
+    [[ -z "$remote_sha" ]] && remote_sha="$(git ls-remote "$repo_url" "$revision" 2>/dev/null | awk '{print $1; exit}')"
+    [[ "$remote_sha" == "$expected" ]] && {
+      echo ">> Argo MAS config repo is current ($revision=$expected)"
+      return 0
+    }
+
+    if (( elapsed == 0 || elapsed % 60 == 0 )); then
+      echo ">> still waiting for MAS config repo visibility (remote=${remote_sha:-unreadable}, expected=$expected, elapsed=${elapsed}s)"
+    fi
+    (( elapsed += 15 ))
+    [[ "$elapsed" -ge "$timeout" ]] && {
+      echo "ERROR: Argo MAS config repo did not expose expected commit within ${timeout}s." >&2
+      echo "       expected: $expected" >&2
+      echo "       observed: ${remote_sha:-unreadable}" >&2
+      echo "       repo:     $repo_url" >&2
+      echo "       branch:   $revision" >&2
+      echo "       If Argo reads GitLab, mirror/push this commit there before syncing." >&2
+      return 1
+    }
+    sleep 15
+  done
+}
+
 wait_app_refresh_complete() {
   local app="${1:?app name}" timeout="${2:-300}" elapsed=0 refresh="" last_report=-60
   while :; do

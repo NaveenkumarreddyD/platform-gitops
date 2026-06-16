@@ -5,6 +5,7 @@ set -euo pipefail
 # Usage:  export VAULT_TOKEN=<root> (+ IBM_ENTITLEMENT_KEY/MAS_LICENSE_FILE/JDBC_* for load)
 #         ./scripts/deploy.sh [--yes] [--no-push] ../mas-gitops-config/envs/drroc4.env
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
+source "$ROOT/scripts/lib-argocd-oc.sh"
 ASSUME_YES=0
 NO_PUSH=0
 ENVFILE=""
@@ -65,6 +66,7 @@ else
 fi
 if [[ "$a" == y ]]; then
   ( cd "$CONFIG_REPO" && git commit -m "deploy: $CLUSTER" && git push )
+  wait_config_repo_published "$CONFIG_REPO" "$CLUSTER" 300
   echo ">> pushed. Next: run ./scripts/prepare-prereqs.sh $ENVFILE"
 else
   echo ">> skipped push. Review with: cd $CONFIG_REPO && git diff --cached"
