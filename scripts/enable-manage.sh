@@ -40,9 +40,11 @@ for spec in \
   "bascfgs.config.mas.ibm.com ${INSTANCE_ID}-bas-system"; do
   set -- $spec
   kind="$1"; name="$2"
+  echo ">> waiting for $CORE_NS/$kind/$name before enabling Manage"
   wait_resource_ready "$kind" "$name" "$CORE_NS" 1800
 done
 
+echo ">> waiting for $CORE_NS/suite/$INSTANCE_ID before enabling Manage"
 wait_suite_ready "$INSTANCE_ID" "$CORE_NS" 3600
 
 echo ">> enabling ENABLE_MANAGE=true in $ENVFILE"

@@ -80,5 +80,6 @@ sync_parent_until_child_exists ibm-mas-account-root "${INSTANCE_ID}-bas-system.$
 hard_refresh_app "${INSTANCE_ID}-bas-system.${CLUSTER_ID}"
 sync_app_oc "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" false
 wait_app_synced_healthy "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" 1200
+echo ">> waiting for mas-${INSTANCE_ID}-core/bascfgs.config.mas.ibm.com/${INSTANCE_ID}-bas-system Ready"
 wait_resource_ready bascfgs.config.mas.ibm.com "${INSTANCE_ID}-bas-system" "mas-${INSTANCE_ID}-core" 1800
 echo ">> BAS config enabled and Ready."

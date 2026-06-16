@@ -10,10 +10,14 @@ hard_refresh_app() {
 }
 
 wait_app_refresh_complete() {
-  local app="${1:?app name}" timeout="${2:-300}" elapsed=0 refresh=""
+  local app="${1:?app name}" timeout="${2:-300}" elapsed=0 refresh="" last_report=-60
   while :; do
     refresh="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/refresh}' 2>/dev/null || true)"
     [[ -z "$refresh" ]] && return 0
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for hard refresh on application/$app to complete (elapsed=${elapsed}s)"
+      last_report="$elapsed"
+    fi
     (( elapsed += 5 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for hard refresh to complete for $app" >&2
@@ -24,10 +28,14 @@ wait_app_refresh_complete() {
 }
 
 wait_app_idle() {
-  local app="${1:?app name}" timeout="${2:-600}" elapsed=0 phase=""
+  local app="${1:?app name}" timeout="${2:-600}" elapsed=0 phase="" last_report=-60
   while :; do
     phase="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)"
     [[ "$phase" != "Running" ]] && return 0
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for application/$app operation to finish (phase=${phase:-unknown}, elapsed=${elapsed}s)"
+      last_report="$elapsed"
+    fi
     (( elapsed += 5 ))
     [[ "$elapsed" -ge "$timeout" ]] && { echo "ERROR: timeout waiting for $app operation to finish" >&2; return 1; }
     sleep 5
@@ -35,12 +43,16 @@ wait_app_idle() {
 }
 
 wait_app_exists() {
-  local app="${1:?app name}" timeout="${2:-600}" elapsed=0
+  local app="${1:?app name}" timeout="${2:-600}" elapsed=0 last_report=-60
   while :; do
     oc get application "$app" -n "$ARGO_NS" >/dev/null 2>&1 && {
       echo ">> application/$app exists"
       return 0
     }
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for application/$app to be generated (elapsed=${elapsed}s)"
+      last_report="$elapsed"
+    fi
     (( elapsed += 5 ))
     [[ "$elapsed" -ge "$timeout" ]] && { echo "ERROR: timeout waiting for application/$app" >&2; return 1; }
     sleep 5
@@ -86,7 +98,7 @@ sync_app_oc() {
 }
 
 wait_app_synced_healthy() {
-  local app="${1:?app name}" timeout="${2:-1200}" elapsed=0 health="" sync="" op=""
+  local app="${1:?app name}" timeout="${2:-1200}" elapsed=0 health="" sync="" op="" last_report=-60
   while :; do
     health="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.health.status}' 2>/dev/null || true)"
     sync="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
@@ -95,6 +107,10 @@ wait_app_synced_healthy() {
       echo ">> $app Synced/Healthy"
       return 0
     }
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for application/$app Synced/Healthy (sync=${sync:-unknown}, health=${health:-unknown}, operation=${op:-none}, elapsed=${elapsed}s)"
+      last_report="$elapsed"
+    fi
     (( elapsed += 10 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for $app (sync=$sync health=$health operation=$op)" >&2
@@ -107,7 +123,7 @@ wait_app_synced_healthy() {
 }
 
 wait_app_synced_idle() {
-  local app="${1:?app name}" timeout="${2:-1200}" elapsed=0 sync="" op=""
+  local app="${1:?app name}" timeout="${2:-1200}" elapsed=0 sync="" op="" last_report=-60
   while :; do
     sync="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.sync.status}' 2>/dev/null || true)"
     op="$(oc get application "$app" -n "$ARGO_NS" -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)"
@@ -115,6 +131,10 @@ wait_app_synced_idle() {
       echo ">> $app Synced/Idle"
       return 0
     }
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for application/$app Synced/Idle (sync=${sync:-unknown}, operation=${op:-none}, elapsed=${elapsed}s)"
+      last_report="$elapsed"
+    fi
     (( elapsed += 10 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for $app (sync=$sync operation=$op)" >&2
@@ -126,12 +146,16 @@ wait_app_synced_idle() {
 }
 
 wait_crd() {
-  local crd="${1:?crd name}" timeout="${2:-1200}" elapsed=0
+  local crd="${1:?crd name}" timeout="${2:-1200}" elapsed=0 last_report=-60
   while :; do
     oc get crd "$crd" >/dev/null 2>&1 && {
       echo ">> CRD $crd is registered"
       return 0
     }
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for CRD $crd to be registered (elapsed=${elapsed}s)"
+      last_report="$elapsed"
+    fi
     (( elapsed += 10 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for CRD $crd" >&2
@@ -148,13 +172,17 @@ resource_status() {
 }
 
 wait_resource_ready() {
-  local resource="${1:?resource}" name="${2:?name}" namespace="${3:?namespace}" timeout="${4:-1800}" elapsed=0 status=""
+  local resource="${1:?resource}" name="${2:?name}" namespace="${3:?namespace}" timeout="${4:-1800}" elapsed=0 status="" last_report=-60
   while :; do
     status="$(resource_status "$resource" "$name" "$namespace")"
     [[ "$status" == "Ready" ]] && {
-      echo ">> $resource/$name Ready"
+      echo ">> $namespace/$resource/$name Ready"
       return 0
     }
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for $namespace/$resource/$name Ready (status=${status:-missing}, elapsed=${elapsed}s)"
+      last_report="$elapsed"
+    fi
     (( elapsed += 15 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for $namespace/$resource/$name Ready (status=${status:-missing})" >&2
@@ -167,7 +195,7 @@ wait_resource_ready() {
 }
 
 wait_suite_ready() {
-  local suite="${1:?suite name}" namespace="${2:?namespace}" timeout="${3:-3600}" elapsed=0 status="" generation="" observed=""
+  local suite="${1:?suite name}" namespace="${2:?namespace}" timeout="${3:-3600}" elapsed=0 status="" generation="" observed="" last_report=-60
   while :; do
     status="$(resource_status suite "$suite" "$namespace")"
     generation="$(oc get suite "$suite" -n "$namespace" -o jsonpath='{.metadata.generation}' 2>/dev/null || true)"
@@ -176,6 +204,12 @@ wait_suite_ready() {
       echo ">> suite/$suite Ready"
       return 0
     }
+    if (( elapsed == 0 || elapsed - last_report >= 60 )); then
+      echo ">> waiting for $namespace/suite/$suite Ready (status=${status:-missing}, generation=${generation:-?}, observed=${observed:-?}, elapsed=${elapsed}s)"
+      oc get suite "$suite" -n "$namespace" \
+        -o 'custom-columns=NAME:.metadata.name,STATUS:.status.status,SYSTEMDB:.status.conditions[?(@.type=="SystemDatabaseReady")].status,SLS:.status.conditions[?(@.type=="SLSIntegrationReady")].status,BAS:.status.conditions[?(@.type=="BASIntegrationReady")].status,ROUTES:.status.conditions[?(@.type=="RoutesReady")].status' 2>/dev/null || true
+      last_report="$elapsed"
+    fi
     (( elapsed += 15 ))
     [[ "$elapsed" -ge "$timeout" ]] && {
       echo "ERROR: timeout waiting for $namespace/suite/$suite Ready (status=${status:-missing} generation=${generation:-?} observed=${observed:-?})" >&2

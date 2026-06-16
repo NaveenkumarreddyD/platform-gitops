@@ -33,6 +33,10 @@ sync_sls() {
     registration_key="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
     [[ "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ]]
   }; do
+    if (( i == 0 || i % 60 == 0 )); then
+      echo ">> still waiting for LicenseService in $SLS_NS (initialized=${initialized:-missing}, registrationKey=${registration_key:+present}, elapsed=${i}s)"
+      oc get licenseservices.sls.ibm.com -n "$SLS_NS" 2>/dev/null || true
+    fi
     (( i += 15 ))
     [[ "$i" -ge 1800 ]] && { echo "ERROR: timeout waiting for SLS initialized"; oc get licenseservices.sls.ibm.com -n "$SLS_NS" 2>/dev/null || true; exit 1; }
     sleep 15
@@ -46,6 +50,9 @@ sync_sls() {
     cm_ca="$(oc get cm sls-suite-registration -n "$SLS_NS" -o jsonpath='{.data.ca}' 2>/dev/null || true)"
     [[ -n "$cm_registration_key" && -n "$cm_url" && "$cm_ca" == *"BEGIN CERTIFICATE"* ]]
   }; do
+    if (( i == 0 || i % 60 == 0 )); then
+      echo ">> still waiting for cm/sls-suite-registration in $SLS_NS (registrationKey=${cm_registration_key:+present}, url=${cm_url:+present}, ca=${cm_ca:+present}, elapsed=${i}s)"
+    fi
     (( i += 15 ))
     [[ "$i" -ge 1800 ]] && {
       echo "ERROR: timeout waiting for sls-suite-registration with registrationKey, url, and ca in $SLS_NS"
@@ -68,12 +75,20 @@ sync_dro() {
   echo ">> waiting for DRO runtime material in $DRO_NS..."
   i=0
   until oc get route -n "$DRO_NS" 2>/dev/null | grep -qiE 'data-reporter|dro'; do
+    if (( i == 0 || i % 60 == 0 )); then
+      echo ">> still waiting for DRO route in $DRO_NS (elapsed=${i}s)"
+      oc get route -n "$DRO_NS" 2>/dev/null || true
+    fi
     (( i += 15 ))
     [[ "$i" -ge 1800 ]] && { echo "ERROR: timeout waiting for DRO route in $DRO_NS"; oc get route -n "$DRO_NS" 2>/dev/null || true; exit 1; }
     sleep 15
   done
   i=0
   until oc get secret -n "$DRO_NS" -o name 2>/dev/null | grep -qiE 'data-reporter|dro'; do
+    if (( i == 0 || i % 60 == 0 )); then
+      echo ">> still waiting for DRO token/secret in $DRO_NS (elapsed=${i}s)"
+      oc get secret -n "$DRO_NS" 2>/dev/null | grep -Ei 'data-reporter|dro' || true
+    fi
     (( i += 15 ))
     [[ "$i" -ge 1800 ]] && { echo "ERROR: timeout waiting for DRO secret in $DRO_NS"; oc get secret -n "$DRO_NS" 2>/dev/null || true; exit 1; }
     sleep 15
