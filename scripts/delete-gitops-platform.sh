@@ -9,17 +9,20 @@ set -euo pipefail
 # Usage:
 #   ./scripts/delete-gitops-platform.sh --confirm ../mas-gitops-config/envs/drroc4.env
 #   ./scripts/delete-gitops-platform.sh --confirm --include-vault ../mas-gitops-config/envs/drroc4.env
+#   ./scripts/delete-gitops-platform.sh --confirm --include-vault --leave-controllers-paused ../mas-gitops-config/envs/drroc4.env
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"
 
 CONFIRM=0
 INCLUDE_VAULT=0
+LEAVE_CONTROLLERS_PAUSED=0
 ENVFILE=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRM=1; shift ;;
     --include-vault) INCLUDE_VAULT=1; shift ;;
+    --leave-controllers-paused) LEAVE_CONTROLLERS_PAUSED=1; shift ;;
     -h|--help)
       sed -n '1,13p' "$0"
       exit 0
@@ -47,6 +50,7 @@ Will delete GitOps platform/instance resources for:
   DRO ns:   $DRO_NAMESPACE
 
 Vault is preserved unless --include-vault is passed.
+OpenShift GitOps controllers are restored at the end unless --leave-controllers-paused is passed.
 MSG
   exit 0
 fi
@@ -65,7 +69,16 @@ say(){ printf '\n=== %s ===\n' "$*"; }
 
 CONTROLLER_SCALE_FILE="$(mktemp)"
 cleanup(){
-  if [[ -s "$CONTROLLER_SCALE_FILE" ]]; then
+  if [[ "$LEAVE_CONTROLLERS_PAUSED" == "1" ]]; then
+    if [[ -s "$CONTROLLER_SCALE_FILE" ]]; then
+      say "Leaving OpenShift GitOps controllers paused"
+      echo "Restore manually after cleanup is verified:"
+      while read -r kind name replicas; do
+        [[ -n "$kind" && -n "$name" && -n "$replicas" ]] || continue
+        echo "  oc scale $kind/$name -n $ARGO_NS --replicas=$replicas"
+      done < "$CONTROLLER_SCALE_FILE"
+    fi
+  elif [[ -s "$CONTROLLER_SCALE_FILE" ]]; then
     say "Restoring OpenShift GitOps controllers"
     while read -r kind name replicas; do
       [[ -n "$kind" && -n "$name" && -n "$replicas" ]] || continue
@@ -113,7 +126,14 @@ matching_appsets(){
   oc get applicationsets.argoproj.io -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
     | while read -r name; do
         [[ -n "$name" ]] || continue
-        app_matches "$name" && echo "$name"
+        if app_matches "$name"; then
+          echo "$name"
+          continue
+        fi
+        if oc get applicationset "$name" -n "$ARGO_NS" -o yaml 2>/dev/null \
+          | grep -E "(${CLUSTER_ID}|${INSTANCE_ID}|${MONGO_NS}|${DRO_NAMESPACE})" >/dev/null; then
+          echo "$name"
+        fi
       done
 }
 
