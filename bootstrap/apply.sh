@@ -12,9 +12,13 @@ for f in "$ROOT"/bootstrap/00-prereqs/repo-creds/*.yaml; do     # real repo cred
   [[ "$f" == *.example.yaml ]] && continue; [[ -e "$f" ]] && oc apply -f "$f"
 done
 
-echo ">> 2/4 enable the AVP sidecar on the repo-server (patch the ArgoCD CR)"
+echo ">> 2/4 patch the ArgoCD CR: AVP sidecar + MAS custom resource healthchecks"
 oc patch argocd "$NS" -n "$NS" --type merge \
   --patch-file "$ROOT/bootstrap/argocd-cr-avp-sidecar-patch.yaml"
+# Register MAS CR healthchecks so Argo gates sync waves on REAL CR readiness
+# (Suite/MongoCfg/SlsCfg/JdbcCfg/BasCfg/Manage/LicenseService/OLM/Db2u), not just existence.
+oc patch argocd "$NS" -n "$NS" --type merge \
+  --patch-file "$ROOT/bootstrap/argocd-cr-healthchecks-patch.yaml"
 oc rollout restart deploy/openshift-gitops-repo-server -n "$NS"
 oc rollout status  deploy/openshift-gitops-repo-server -n "$NS" --timeout=180s || true
 

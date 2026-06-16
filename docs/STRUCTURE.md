@@ -5,8 +5,12 @@ Three tiers, one job each:
 ```
 bootstrap/    DAY-0 bootstrap (imperative, once per cluster) — the ONLY manual step. 00-prereqs/ =
               optional repo CA, Argo RBAC, `mas` AppProject, repo creds, AND all AVP enablement (CMP
-              plugin, Vault creds, token-review RBAC). apply.sh applies those, patches the
-              repo-server with the AVP sidecar, then applies the gitops root. ArgoCD owns the rest.
+              plugin, Vault creds, token-review RBAC). apply.sh applies those, patches the ArgoCD CR
+              with (a) the AVP sidecar and (b) the MAS custom resource healthchecks
+              (argocd-cr-healthchecks-patch.yaml — Suite/MongoCfg/SlsCfg/JdbcCfg/BasCfg/Manage/
+              LicenseService/OLM/Db2u), then applies the gitops root. The healthchecks make Argo
+              gate sync waves on REAL CR readiness instead of mere existence, so the platform
+              self-orchestrates (the staged scripts then just drive + verify). ArgoCD owns the rest.
 gitops/       APP-OF-APPS GENERATOR (self-healing). One file per Application:
                 templates/root/root-application.yaml   the app-of-apps root (apply.sh applies ONLY this)
                 templates/apps/<domain>/app-NN-*.yaml   children (wave-ordered by domain)
