@@ -78,6 +78,22 @@ if [ "$MODE" = "sls" ]; then
     }
     sleep "$INTERVAL"
   done
+  # PERMANENT FIX for the recurring SLSCfg registration error
+  #   "CERTIFICATE_VERIFY_FAILED: self signed certificate in certificate chain".
+  # The SLSCfg TLS-verifies the cert served at $URL (sls.<ns>.svc:443). The cm 'ca' is supposed
+  # to be that CA, but on self-signed/internal SLS it often doesn't fully cover the served chain.
+  # So append the LIVE served chain from $URL to the trust bundle — the resulting bundle trusts
+  # whatever actually signs the SLS endpoint, regardless of what the cm published.
+  sls_host="${URL#https://}"; sls_host="${sls_host%%/*}"; sls_host="${sls_host%%:*}"
+  if [ -n "$sls_host" ] && command -v openssl >/dev/null 2>&1; then
+    if openssl s_client -showcerts -connect "${sls_host}:443" -servername "$sls_host" </dev/null 2>/dev/null \
+         | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > /work/sls-served.pem && \
+       grep -q 'BEGIN CERTIFICATE' /work/sls-served.pem 2>/dev/null; then
+      printf '\n' >> /work/ca.pem
+      cat /work/sls-served.pem >> /work/ca.pem
+      echo ">> sls: appended live served CA chain from ${sls_host}:443 to the trust bundle"
+    fi
+  fi
   echo ">> sls: rk=${RK:0:8}… url=$URL ca=$( [ -s /work/ca.pem ] && echo PEM || echo empty )"
 
 elif [ "$MODE" = "dro" ]; then

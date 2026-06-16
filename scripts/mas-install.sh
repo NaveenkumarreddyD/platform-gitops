@@ -27,6 +27,12 @@ YES_ARGS=(); [[ "$YES" == 1 ]] && YES_ARGS+=(--yes)
 is_true(){ [[ "${1:-}" =~ ^([1]|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; }
 banner(){ printf '\n############################################################\n# %s\n############################################################\n' "$*"; }
 
+banner "6b. Reconcile Mongo CA into the Suite's MongoCfg (now that the cascade created it)"
+# The cascade creates mongocfg/slscfg AFTER mas-prep's reconcile ran, so they can render with a
+# stale CA and report InvalidConfiguration. Re-run it here, when the CRs exist, to re-render with
+# the live CA and bounce entitymgr-mongocfg so SystemDatabaseReady goes True. Idempotent.
+./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
+
 banner "7. Harvest SLS registration and enable SLSCfg"
 ./scripts/sync-runtime-registration.sh --sls-only "$ENVFILE"
 ./scripts/enable-sls-config.sh "${YES_ARGS[@]}" "$ENVFILE"
