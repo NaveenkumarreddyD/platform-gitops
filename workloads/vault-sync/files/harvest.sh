@@ -17,8 +17,8 @@ read_ca() {  # $1=namespace ; tries common SLS/DRO cert secrets
   : > /work/ca.pem
 }
 
-read_route_ca() { # $1=https URL; writes the route certificate chain to /work/ca.pem
-  local url="$1" host chain="/work/route-chain.pem"
+read_route_ca() { # $1=https URL; writes the route CA bundle to /work/ca.pem
+  local url="$1" host chain="/work/route-chain.pem" cert_count
   host="${url#https://}"; host="${host%%/*}"; host="${host%%:*}"
   [ -n "$host" ] || return 1
   : > "$chain"
@@ -27,7 +27,15 @@ read_route_ca() { # $1=https URL; writes the route certificate chain to /work/ca
       awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > "$chain" || true
   fi
   if grep -q 'BEGIN CERTIFICATE' "$chain" 2>/dev/null; then
-    cp "$chain" /work/ca.pem
+    cert_count="$(grep -c 'BEGIN CERTIFICATE' "$chain" 2>/dev/null || echo 0)"
+    if [ "$cert_count" -gt 1 ]; then
+      awk '
+        /BEGIN CERTIFICATE/ { n++; keep=(n > 1) }
+        keep { print }
+      ' "$chain" > /work/ca.pem
+    else
+      cp "$chain" /work/ca.pem
+    fi
     return 0
   fi
   return 1
