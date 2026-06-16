@@ -1,0 +1,34 @@
+{{- if and (not .Values.rootOnly) .Values.enable.masCerts }}
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mas-certs.{{ .Values.clusterId }}.{{ .Values.instanceId }}
+  namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform }
+  annotations: { argocd.argoproj.io/sync-wave: "29" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  revisionHistoryLimit: 10
+  project: {{ .Values.project }}
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.argoNamespace }}
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/mas-certs
+    helm:
+      values: |
+        instanceId: {{ .Values.instanceId }}
+        workspaceId: {{ .Values.workspaceId }}
+        certPath: {{ include "gitops.path" . }}/certs/public
+        core:
+          enabled: {{ .Values.masCerts.core }}
+        manage:
+          enabled: {{ .Values.masCerts.manage }}
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+{{- end }}

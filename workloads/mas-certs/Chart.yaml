@@ -1,0 +1,6 @@
+apiVersion: v2
+name: mas-certs
+description: IBM MAS manual public TLS certificate secrets rendered from Vault
+type: application
+version: 0.1.0
+appVersion: "1.0"

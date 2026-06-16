@@ -43,6 +43,7 @@ enable:
   vault: true
   vaultUnseal: false        # set true (with vault.autoUnseal.enabled) to deploy the auto-unseal CronJob
   accountRoot: true
+  masCerts: false
   operators: true
   mongodb: true
   jdbc: true
@@ -54,7 +55,11 @@ enable:
 # ---- per-env placeholders (set in <env>-* files) ----
 clusterId: ""
 instanceId: ""
+workspaceId: ""
 mongo: { namespace: "", members: 3, version: "6.0.12", adminUser: admin }
 jdbc:  { sslEnabled: false }
 dro:   { namespace: ibm-software-central, syncEnabled: false }
 sls:   { syncEnabled: true }
+masCerts:
+  core: true
+  manage: true
