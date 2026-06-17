@@ -121,15 +121,31 @@ elif [ "$MODE" = "dro" ]; then
   fi
   [ -z "$TOK" ] && { echo "ERROR: DRO api token not found in $NS (set droSync.tokenSecret)"; exit 1; }
   printf '%s' "$TOK" > /work/api_token
-  # Official IBM method: the DRO CA ships in the SAME secret (field ca.crt). Prefer that; fall
-  # back to a TLS handshake, then a broad cert-secret grep, only if the secret lacks a CA.
+  # Official IBM method (primary): the DRO CA ships in Secret ibm-data-reporter-operator-api-token
+  # (field ca.crt). Prefer that. BUT verify it actually validates the cert served at $URL — on a
+  # reencrypt Route the endpoint serves the cluster INGRESS cert, while a service-account-token's
+  # ca.crt is the kube CA (mismatch -> CERTIFICATE_VERIFY_FAILED). If it doesn't validate, fall
+  # back to the live served chain so BASCfg trusts whatever the DRO endpoint actually presents.
   : > /work/ca.pem
   for s in ${DRO_CA_SECRET:-} ibm-data-reporter-operator-api-token $(oc get secret -n "$NS" -o name 2>/dev/null | grep -iE 'data-reporter|dro' | sed 's#secret/##'); do
     oc get secret "$s" -n "$NS" -o jsonpath='{.data.ca\.crt}' 2>/dev/null | base64 -d > /work/ca.pem 2>/dev/null || true
     grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null && break
   done
+  dro_host="${URL#https://}"; dro_host="${dro_host%%/*}"; dro_port="${dro_host##*:}"; dro_host="${dro_host%%:*}"
+  [ "$dro_port" = "$dro_host" ] && dro_port=443
+  if [ -n "$dro_host" ] && command -v openssl >/dev/null 2>&1; then
+    if grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null && \
+       echo | openssl s_client -connect "${dro_host}:${dro_port}" -servername "$dro_host" \
+         -CAfile /work/ca.pem -verify_return_error </dev/null >/dev/null 2>&1; then
+      echo ">> dro: secret 'ca.crt' validates the endpoint (upstream-native)"
+    else
+      echo ">> dro: secret 'ca.crt' missing or does not validate ${dro_host}:${dro_port} — using live served chain"
+      echo | openssl s_client -showcerts -connect "${dro_host}:${dro_port}" -servername "$dro_host" </dev/null 2>/dev/null \
+        | awk '/BEGIN CERTIFICATE/,/END CERTIFICATE/' > /work/ca.pem || true
+    fi
+  fi
   if ! grep -q 'BEGIN CERTIFICATE' /work/ca.pem 2>/dev/null; then
-    read_route_ca "$URL" || { CA_GREP='(data-reporter|dro).*(cert|tls|ca)'; EXTRA_CA_SECRET="${DRO_CA_SECRET:-}"; read_ca "$NS"; }
+    CA_GREP='(data-reporter|dro).*(cert|tls|ca)'; EXTRA_CA_SECRET="${DRO_CA_SECRET:-}"; read_ca "$NS"
   fi
   echo ">> dro: url=$URL token=${TOK:0:6}… ca=$( [ -s /work/ca.pem ] && echo PEM || echo empty )"
 
