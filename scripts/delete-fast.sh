@@ -4,7 +4,7 @@ set -euo pipefail
 # Pauses Argo CD, force-deletes the cluster's apps/appsets, deletes the target namespaces in
 # parallel, strips finalizers ONLY on the known MAS/operator CRs, then force-finalizes any
 # straggler namespace via the /finalize API (removes it + everything in it instantly). Restores
-# Argo controllers on exit. Much faster than the per-api-resource sweep in delete-gitops-platform.sh.
+# Argo controllers on exit.
 #
 # Usage:
 #   ./scripts/delete-fast.sh [--confirm] [--include-vault] <cluster.env | cluster-name>

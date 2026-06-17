@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Restore the OpenShift GitOps controllers that delete-gitops-platform.sh paused
-# (when run with --leave-controllers-paused). Scales the application-controller and
+# Restore the OpenShift GitOps controllers if a teardown left them paused (e.g. delete-fast.sh
+# was interrupted before its restore trap ran). Scales the application-controller and
 # applicationset-controller back to their original replica counts, waits for them to
 # become ready, and warns if the GitOps operator is pinning them back to 0.
 #

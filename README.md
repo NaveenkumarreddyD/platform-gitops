@@ -65,7 +65,7 @@ versions). DRO/BAS is intentionally **skipped** when `GITOPS_OWNS_DRO=false`.
 ## Day-2 helpers
 - `./scripts/refresh-config.sh drroc4` — force ArgoCD to pull the latest commit now (otherwise
   auto-picked up in ~60–120s; the poll is tuned via the bootstrap healthchecks patch).
-- `./scripts/delete-gitops-platform.sh --confirm drroc4` — scoped teardown (add `--include-vault`
+- `./scripts/delete-fast.sh --confirm drroc4` — fast scoped teardown (add `--include-vault`
   to wipe Vault too). Accepts a bare cluster name; `--help` for details.
 
 Safety nets baked in: every entry script runs `assert_repo_fresh` (refuses to run a stale clone),
