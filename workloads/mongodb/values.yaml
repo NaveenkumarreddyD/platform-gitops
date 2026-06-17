@@ -3,9 +3,11 @@
 namespace: mongo-drgitops
 resource: drgitopsapp-mongo
 members: 3                       # ibm default mongodb_replicas=3 (3 data + 3 logs PVCs)
-mongodbVersion: "7.0.23"         # MongoDB 7.0.23 (latest IBM 7.0 UBI8 build; certified for v9-250925).
-                                 # Image = quay.io/ibmmas/mongo:7.0.23-ubi8-20250817T080412Z (repo+imageType set in gitops/values.yaml).
-                                 # NOTE: 6->7 is a MAJOR upgrade — fresh install only, never an in-place push on live 6.x data.
+mongodbVersion: "7.0.23"         # spec.version (semver for the operator); 6->7 is MAJOR — fresh install only.
+# Full mongod image, pinned on the container. Required: the community operator only appends the
+# -<imageType> suffix for official repos (docker.io/mongodb, quay.io/mongodb); for quay.io/ibmmas it
+# would emit a bare :<version> tag that doesn't exist. Composed from gitops/values.yaml mongoImage.
+mongodbImage: "quay.io/ibmmas/mongo:7.0.23-ubi8-20250817T080412Z"
 storageClass: isilon
 dataSize: 20Gi                   # ibm default mongodb_storage_capacity_data
 logsSize: 20Gi                   # ibm default mongodb_storage_capacity_logs

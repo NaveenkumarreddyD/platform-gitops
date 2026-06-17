@@ -28,6 +28,7 @@ spec:
             resource: {{ .Values.instanceId }}-mongo
             members: {{ .Values.mongo.members }}
             mongodbVersion: "{{ .Values.mongo.version }}"
+            mongodbImage: "{{ .Values.mongoImage.repo }}/{{ .Values.mongoImage.name }}:{{ .Values.mongo.version }}-{{ .Values.mongoImage.imageType }}"
             storageClass: {{ .Values.storageClass }}
             adminUser: {{ .Values.mongo.adminUser }}
             adminPasswordPath: "<path:{{ include "gitops.path" . }}/mongo#password>"

@@ -38,6 +38,9 @@ spec:
         spec:
           containers:
             - name: mongod
+              {{- if .Values.mongodbImage }}
+              image: "{{ .Values.mongodbImage }}"
+              {{- end }}
               resources:
                 requests: { cpu: {{ .Values.resources.requests.cpu | quote }}, memory: {{ .Values.resources.requests.memory | quote }} }
                 limits:   { cpu: {{ .Values.resources.limits.cpu | quote }},   memory: {{ .Values.resources.limits.memory | quote }} }

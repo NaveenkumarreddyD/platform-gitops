@@ -44,10 +44,11 @@ operatorsNamespace: platform-operators
 # (0.9.0's agent only covered 6.x). VERIFY against IBM's "Upgrade MongoDB Community Operator" guide
 # for the version IBM ships with your catalog, and set mongoImage.* below to pull the IBM mongod image.
 mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: community-operator, version: "0.12.0" }
-# IBM-provided mongod image (matches the Ansible install: quay.io/ibmmas/mongo). The community operator
-# builds the mongod image as <repo>/<name>:<version>[-imageType]; imageType empty = plain version tag.
-# -> quay.io/ibmmas/mongo:<version>-<imageType> = quay.io/ibmmas/mongo:7.0.23-ubi8-20250817T080412Z
-# (latest IBM 7.0 UBI8 build, confirmed via: skopeo list-tags docker://quay.io/ibmmas/mongo | grep 7.0)
+# IBM mongod image (matches the Ansible install). Composed into the FULL tag and pinned on the mongod
+# container in workloads/mongodb (app-25). The operator only auto-appends -<imageType> for official
+# repos (docker.io/mongodb, quay.io/mongodb) — for quay.io/ibmmas it would emit a bare :<version> tag
+# that 404s, so we pin the full image instead. -> quay.io/ibmmas/mongo:7.0.23-ubi8-20250817T080412Z
+# (verify the tag: skopeo list-tags docker://quay.io/ibmmas/mongo | grep 7.0)
 mongoImage: { repo: "quay.io/ibmmas", name: "mongo", imageType: "ubi8-20250817T080412Z" }
 
 # which Applications to emit
