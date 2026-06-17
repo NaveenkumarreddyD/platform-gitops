@@ -55,21 +55,19 @@ banner "8. Sync JdbcCfg"
 ./scripts/sync-jdbc-config.sh "$ENVFILE"
 wait_resource_ready jdbccfgs.config.mas.ibm.com "${INSTANCE_ID}-jdbc-system" "$CORE_NS" 1800
 
-if is_true "${GITOPS_OWNS_DRO:-true}"; then
-  banner "9. Harvest DRO registration and enable BASCfg"
-  ./scripts/sync-runtime-registration.sh --dro-only "$ENVFILE"
-  ./scripts/enable-bas-config.sh "${YES_ARGS[@]}" "$ENVFILE"
-  wait_resource_ready bascfgs.config.mas.ibm.com "${INSTANCE_ID}-bas-system" "$CORE_NS" 1800
-else
-  banner "9. DRO/BAS skipped (GITOPS_OWNS_DRO=false)"
-  echo ">> Enable later: set GITOPS_OWNS_DRO=true, re-render/push, then re-run this script."
-fi
+banner "9. Harvest DRO registration and converge BASCfg (DRO is always deployed; BASCfg rendered up front)"
+# Declarative: DRO is always deployed and BASCfg renders from the start. Harvest the DRO
+# registration + served CA into Vault, then converge (bounce_until_ready bascfg). The Suite
+# requires BASIntegrationReady, so this must complete before Suite Ready.
+./scripts/sync-runtime-registration.sh --dro-only "$ENVFILE"
+./scripts/enable-bas-config.sh "${YES_ARGS[@]}" "$ENVFILE"
+wait_resource_ready bascfgs.config.mas.ibm.com "${INSTANCE_ID}-bas-system" "$CORE_NS" 1800
 
 banner "10. Wait for Suite Ready"
 wait_resource_ready mongocfgs.config.mas.ibm.com "${INSTANCE_ID}-mongo-system" "$CORE_NS" 1800
 wait_suite_ready "$INSTANCE_ID" "$CORE_NS" 3600
 
-banner "11. Enable Manage"
+banner "11. Wait for Manage to converge (rendered declaratively; account-root auto-generates it)"
 ./scripts/enable-manage.sh "${YES_ARGS[@]}" "$ENVFILE"
 
 banner "12. Summary + verify"

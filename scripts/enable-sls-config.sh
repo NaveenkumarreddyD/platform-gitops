@@ -49,48 +49,9 @@ field "$IP/sls" ca.crt | grep -q "BEGIN CERTIFICATE" || {
 echo ">> waiting for MAS config CRD slscfgs.config.mas.ibm.com"
 wait_crd slscfgs.config.mas.ibm.com 1800
 
-echo ">> enabling ENABLE_SLS_CONFIG=true in $ENVFILE"
-set_env_value() {
-  local key="${1:?key}" value="${2:?value}"
-  if grep -q "^${key}=" "$ENVFILE"; then
-    perl -0pi -e "s/^${key}=.*/${key}=${value}/m" "$ENVFILE"
-  else
-    printf '\n%s=%s\n' "$key" "$value" >> "$ENVFILE"
-  fi
-}
-
-set_env_value ENABLE_SLS_CONFIG true
-
-echo ">> keeping BAS/telemetry gates disabled until enable-bas-config.sh"
-set_env_value ENABLE_BAS_CONFIG false
-set_env_value MAS_FEATURE_USAGE false
-set_env_value MAS_DEPLOYMENT_PROGRESSION false
-set_env_value MAS_USABILITY_METRICS false
-set_env_value MAS_CONTRACT_PERFORMANCE false
-
-(
-  cd "$CONFIG_REPO"
-  python3 render.py "$CLUSTER"
-  git add "envs/$CLUSTER.env" "mas/$CLUSTER"
-  if git diff --cached --quiet; then
-    echo ">> SLS config already enabled; no config commit needed."
-  else
-    git --no-pager diff --cached --stat
-    if [[ "$ASSUME_YES" == "1" ]]; then
-      a=y
-    else
-      read -r -p "Commit and push SLS config changes? [y/N] " a
-    fi
-    if [[ "$a" == y ]]; then
-      git commit -m "enable SLS config for $CLUSTER"
-      git push
-      wait_config_repo_published "$CONFIG_REPO" "$CLUSTER" 300
-    else
-      echo "ERROR: SLS config not pushed; account-root cannot pick it up." >&2
-      exit 1
-    fi
-  fi
-)
+# Declarative: SLSCfg is rendered from the start (no ENABLE_SLS_CONFIG toggle, no flag-flip, no
+# mid-deploy commit). This script only CONVERGES it: the harvested registration was verified above;
+# now re-render the SLSCfg with the current Vault CA and bounce the slscfg controller until it registers.
 
 SLS_APP="${INSTANCE_ID}-sls-system.${CLUSTER_ID}"
 

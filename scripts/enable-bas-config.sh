@@ -43,50 +43,28 @@ done
 field "$IP/dro" ca.crt | grep -q "BEGIN CERTIFICATE" || {
   echo "ERROR: $KV/$IP/dro#ca.crt is not a valid PEM. Re-run the DRO harvest: ./scripts/sync-runtime-registration.sh --dro-only $ENVFILE" >&2; exit 1; }
 
-echo ">> enabling ENABLE_BAS_CONFIG=true in $ENVFILE"
-set_env_true() {
-  local key="${1:?env key}"
-  if grep -q "^${key}=" "$ENVFILE"; then
-    perl -0pi -e "s/^${key}=.*/${key}=true/m" "$ENVFILE"
-  else
-    printf '\n%s=true\n' "$key" >> "$ENVFILE"
-  fi
-}
-set_env_true ENABLE_BAS_CONFIG
-set_env_true MAS_FEATURE_USAGE
-set_env_true MAS_DEPLOYMENT_PROGRESSION
-set_env_true MAS_USABILITY_METRICS
-set_env_true MAS_CONTRACT_PERFORMANCE
+# Declarative: BASCfg is rendered from the start (no ENABLE_BAS_CONFIG toggle, no flag-flip, no
+# mid-deploy commit). This script only CONVERGES it: the harvested DRO registration was verified
+# above; now re-render the BASCfg and bounce the bascfg controller until it registers.
 
-(
-  cd "$CONFIG_REPO"
-  python3 render.py "$CLUSTER"
-  git add "envs/$CLUSTER.env" "mas/$CLUSTER"
-  if git diff --cached --quiet; then
-    echo ">> BAS config already enabled; no config commit needed."
-  else
-    git --no-pager diff --cached --stat
-    if [[ "$ASSUME_YES" == "1" ]]; then
-      a=y
-    else
-      read -r -p "Commit and push BAS config changes? [y/N] " a
-    fi
-    if [[ "$a" == y ]]; then
-      git commit -m "enable BAS config for $CLUSTER"
-      git push
-      wait_config_repo_published "$CONFIG_REPO" "$CLUSTER" 300
-    else
-      echo "ERROR: BAS config not pushed; account-root cannot pick it up." >&2
-      exit 1
-    fi
-  fi
-)
+BAS_APP="${INSTANCE_ID}-bas-system.${CLUSTER_ID}"
+CORE_NS="mas-${INSTANCE_ID}-core"
 
-echo ">> refreshing and syncing account-root so bas-system is generated"
-sync_parent_until_child_exists ibm-mas-account-root "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" 900
-hard_refresh_app "${INSTANCE_ID}-bas-system.${CLUSTER_ID}"
-sync_app_oc "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" false
-wait_app_synced_healthy "${INSTANCE_ID}-bas-system.${CLUSTER_ID}" 1200
-echo ">> waiting for mas-${INSTANCE_ID}-core/bascfgs.config.mas.ibm.com/${INSTANCE_ID}-bas-system Ready"
-wait_resource_ready bascfgs.config.mas.ibm.com "${INSTANCE_ID}-bas-system" "mas-${INSTANCE_ID}-core" 1800
-echo ">> BAS config enabled and Ready."
+# Generate + converge the BASCfg. Re-render it with the current Vault DRO values, then
+# bounce_until_ready the bascfg controller (same deterministic pattern as slscfg/mongocfg) — the
+# controller caches its DRO TLS verify, so a single wait can't recover from a cached failure.
+echo ">> generating + converging the BASCfg ($BAS_APP)"
+hard_refresh_app ibm-mas-account-root
+sync_parent_until_child_exists ibm-mas-account-root "$BAS_APP" 900
+hard_refresh_app "$BAS_APP"
+sync_app_oc "$BAS_APP" false || true
+bounce_until_ready "$CORE_NS" 'entitymgr-bascfg' \
+  bascfgs.config.mas.ibm.com "${INSTANCE_ID}-bas-system" "$CORE_NS" 4 300
+
+# BASCfg Ready -> bounce the Suite so BASIntegrationReady picks it up.
+SUITE_POD="$(oc get pod -n "$CORE_NS" --no-headers 2>/dev/null | awk '/entitymgr-suite/ {print $1; exit}')"
+if [[ -n "$SUITE_POD" ]]; then
+  echo ">> deleting pod/$SUITE_POD so the Suite re-reads the now-Ready BASCfg (BASIntegrationReady)"
+  oc delete pod "$SUITE_POD" -n "$CORE_NS" --ignore-not-found
+fi
+echo ">> BAS config enabled and BASCfg Ready."
