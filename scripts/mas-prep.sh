@@ -35,6 +35,11 @@ CHECK_SECRET_INPUTS=true ./scripts/check-env.sh "$ENVFILE"
 banner "2. Vault auth + load static secrets + render & push MAS config"
 ./scripts/deploy.sh "${YES_ARGS[@]}" "$ENVFILE"
 
+banner "2b. Hard-refresh the cascade so AVP re-renders with the just-loaded secrets"
+# With accountRoot.autoSync, bootstrap may have generated the cascade (operator-catalog, etc.)
+# BEFORE step 2 wrote the secrets, leaving cached AVP 'Could not find secrets' errors. Bust them.
+hard_refresh_cluster_apps "$CLUSTER_ID" "$INSTANCE_ID"
+
 banner "3. Verify MAS public certificate is in Vault (manual cert management)"
 if is_true "${MAS_MANUAL_CERT_MGMT:-true}"; then
   ./scripts/preflight-public-cert.sh "$ENVFILE"

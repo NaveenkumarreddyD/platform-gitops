@@ -43,6 +43,23 @@ hard_refresh_app() {
   oc annotate application "$app" -n "$ARGO_NS" argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
 }
 
+# hard_refresh_cluster_apps <cluster_id> [instance_id]
+# Hard-refresh ibm-mas-account-root + every Application for the cluster/instance so AVP
+# re-renders against the CURRENT Vault secrets. Needed because with accountRoot.autoSync the
+# cascade (e.g. operator-catalog) can render at bootstrap BEFORE load-secrets runs, leaving a
+# cached AVP "Could not find secrets" ComparisonError that a normal refresh reuses.
+hard_refresh_cluster_apps() {
+  local cid="${1:?cluster id}" iid="${2:-}" pat="" n=0 app
+  pat="$cid"; [[ -n "$iid" ]] && pat="$cid|$iid"
+  for app in ibm-mas-account-root \
+    $(oc get applications -n "$ARGO_NS" -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
+        | grep -E "$pat" | sort -u || true); do
+    oc get application "$app" -n "$ARGO_NS" >/dev/null 2>&1 || continue
+    hard_refresh_app "$app"; n=$((n+1))
+  done
+  echo ">> hard-refreshed $n application(s) for cluster $cid (busts cached AVP renders)"
+}
+
 yaml_inline_value() {
   local file="${1:?file}" map="${2:?map}" key="${3:?key}"
   [[ -f "$file" ]] || return 0

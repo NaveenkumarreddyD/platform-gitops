@@ -42,13 +42,5 @@ fi
 : "${CLUSTER_ID:?set CLUSTER_ID or pass a cluster/env}"; : "${INSTANCE_ID:?}"
 
 echo ">> hard-refreshing ibm-mas-account-root + all apps for cluster=$CLUSTER_ID instance=$INSTANCE_ID"
-n=0
-for app in ibm-mas-account-root $(oc get applications -n "$ARGO_NS" \
-    -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}' 2>/dev/null \
-    | grep -E "(${CLUSTER_ID}|${INSTANCE_ID})" || true); do
-  oc get application "$app" -n "$ARGO_NS" >/dev/null 2>&1 || continue
-  hard_refresh_app "$app"
-  echo "   refreshed $app"
-  n=$((n+1))
-done
-echo ">> requested refresh on $n application(s). ArgoCD re-reads git within seconds; autoSync then applies."
+hard_refresh_cluster_apps "$CLUSTER_ID" "$INSTANCE_ID"
+echo ">> ArgoCD re-reads git + re-renders within seconds; autoSync then applies."
