@@ -22,14 +22,21 @@ yaml_inline_value() {
 }
 
 cluster_generator_setting() {
-  local cluster="${1:?cluster}" key="${2:?key}" value=""
-  for file in "gitops/envs/$cluster/common.yaml" "gitops/envs/$cluster/values.yaml" "gitops/values.yaml"; do
+  local cluster="${1:?cluster}" key="${2:?key}" value="" base=""
+  # Anchor to the platform-gitops root via this lib's own location, NOT the caller's cwd.
+  # Callers like wait_config_repo_published run inside `cd "$CONFIG_REPO"`, so relative
+  # paths would resolve against the config repo (where these files don't exist).
+  base="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)" || base="."
+  for file in "$base/gitops/envs/$cluster/common.yaml" "$base/gitops/envs/$cluster/values.yaml" "$base/gitops/values.yaml"; do
     value="$(yaml_inline_value "$file" generator "$key")"
     [[ -n "$value" ]] && {
       printf '%s\n' "$value"
       return 0
     }
   done
+  # Not found: emit nothing and exit 0. Callers have their own fallbacks; returning
+  # non-zero here would trip `set -e` in a plain assignment and kill the script silently.
+  return 0
 }
 
 wait_config_repo_published() {
