@@ -48,14 +48,14 @@ if truthy "${ALLOW_CUSTOM_MANAGE_CRYPTO_KEYS:-false}"; then
   MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoKey)}"
   MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoxKey)}"
 elif truthy "${ROTATE_MANAGE_CRYPTO_KEYS:-false}"; then
-  MANAGE_CRYPTO_KEY="$(gen 72)"
-  MANAGE_CRYPTOX_KEY="$(gen 72)"
+  MANAGE_CRYPTO_KEY="$(gen 24)"
+  MANAGE_CRYPTOX_KEY="$(gen 24)"
 else
   MANAGE_CRYPTO_KEY="$(vget "$IPREFIX/manage-crypto" cryptoKey)"
   MANAGE_CRYPTOX_KEY="$(vget "$IPREFIX/manage-crypto" cryptoxKey)"
 fi
-MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(gen 72)}"
-MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(gen 72)}"
+MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(gen 24)}"
+MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(gen 24)}"
 MONGO_USERNAME="${MONGO_USERNAME:-admin}"
 MONGO_PASSWORD="${MONGO_PASSWORD:-$(vget "$IPREFIX/mongo" password)}"; MONGO_PASSWORD="${MONGO_PASSWORD:-$(gen 24)}"
 SLS_MONGO_USERNAME="${SLS_MONGO_USERNAME:-slsmongo}"

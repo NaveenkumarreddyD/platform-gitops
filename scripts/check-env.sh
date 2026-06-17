@@ -72,6 +72,30 @@ else
   fi
 fi
 
+# Manage encryption keys: catch the SILENT break where the config renders fine but Manage can't
+# read the DB. autoGenerateEncryptionKeys=true makes Manage MINT NEW keys on every workspace
+# (re)create and IGNORE any you provide — fine for a fresh/empty DB, fatal for a REUSED DB (the
+# existing data was encrypted with the original keys, so it won't decrypt; the failure only shows
+# up much later at Manage server start, not at config/preflight time).
+echo "== manage encryption keys =="
+istrue(){ [[ "${1:-}" =~ ^([Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|1)$ ]]; }
+autogen="${MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS:-true}"
+allowcustom="${ALLOW_CUSTOM_MANAGE_CRYPTO_KEYS:-false}"
+if istrue "$autogen" && istrue "$allowcustom"; then
+  no "MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=true AND ALLOW_CUSTOM_MANAGE_CRYPTO_KEYS=true is contradictory: Manage will GENERATE new keys and IGNORE the ones you supply, so a reused DB will not decrypt. Set MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=false to actually use your keys."
+elif istrue "$autogen"; then
+  warn "MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=true — OK ONLY for a fresh/empty Manage DB. For a REUSED DB this mints NEW keys that cannot decrypt existing data (silent failure at Manage server start). Reused DB => set false and provide the ORIGINAL MXE_SECURITY_CRYPTO_KEY/CRYPTOX_KEY."
+else
+  ok "MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=false (Manage uses Vault-managed keys — deterministic across reinstalls)"
+  if istrue "$allowcustom"; then
+    if [[ -n "${MANAGE_CRYPTO_KEY:-}" && -n "${MANAGE_CRYPTOX_KEY:-}" ]]; then
+      ok "custom Manage crypto keys provided via env (ALLOW_CUSTOM_MANAGE_CRYPTO_KEYS=true)"
+    else
+      warn "ALLOW_CUSTOM_MANAGE_CRYPTO_KEYS=true but MANAGE_CRYPTO_KEY/CRYPTOX_KEY not exported — they must already be in Vault (preflight-vault.sh verifies format). For a reused DB these MUST be the ORIGINAL keys."
+    fi
+  fi
+fi
+
 echo "== required secret inputs =="
 [[ -n "${VAULT_TOKEN:-}" ]] && ok "VAULT_TOKEN exported" || no "export VAULT_TOKEN first"
 if [[ "${CHECK_SECRET_INPUTS:-true}" =~ ^([Ff][Aa][Ll][Ss][Ee]|0|[Nn][Oo])$ ]]; then
