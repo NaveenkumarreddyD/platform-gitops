@@ -42,8 +42,9 @@ truthy(){ [[ "${1:-}" =~ ^([Tt][Rr][Uu][Ee]|[Yy][Ee][Ss]|1)$ ]]; }
 : "${MAS_LICENSE_ID:=}"; : "${JDBC_CA_CRT:=}"   # JDBC_CA_CRT empty => non-SSL
 
 # generate-once (reused on re-run)
-MAS_SUPERUSER_USERNAME="${MAS_SUPERUSER_USERNAME:-$(vget "$IPREFIX/superuser" username)}"; MAS_SUPERUSER_USERNAME="${MAS_SUPERUSER_USERNAME:-superuser}"
-MAS_SUPERUSER_PASSWORD="${MAS_SUPERUSER_PASSWORD:-$(vget "$IPREFIX/superuser" password)}"; MAS_SUPERUSER_PASSWORD="${MAS_SUPERUSER_PASSWORD:-$(gen 24)}"
+# NOTE: the MAS admin "superuser" is NOT generated here. MAS creates it itself as the operator-owned
+# secret ${INSTANCE_ID}-credentials-superuser. We BACK IT UP into Vault (secret/<IP>/superuser) AFTER
+# install via scripts/backup-manage-secrets.sh — alongside the auto-generated Manage crypto keys.
 if truthy "${ALLOW_CUSTOM_MANAGE_CRYPTO_KEYS:-false}"; then
   MANAGE_CRYPTO_KEY="${MANAGE_CRYPTO_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoKey)}"
   MANAGE_CRYPTOX_KEY="${MANAGE_CRYPTOX_KEY:-$(vget "$IPREFIX/manage-crypto" cryptoxKey)}"
@@ -66,7 +67,6 @@ DOCKERCFG="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' "$ENC" | b64)"
 vrun "vault kv put $PREFIX/entitlement image_pull_secret_b64='$DOCKERCFG'"
 putfile "$MAS_LICENSE_FILE" mas-license.dat
 vrun "vault kv put $IPREFIX/license license_id='$MAS_LICENSE_ID' license_file=@/tmp/mas-license.dat; rm -f /tmp/mas-license.dat"
-vrun "vault kv put $IPREFIX/superuser username='$MAS_SUPERUSER_USERNAME' password='$MAS_SUPERUSER_PASSWORD'"
 vrun "vault kv put $IPREFIX/manage-crypto cryptoKey='$MANAGE_CRYPTO_KEY' cryptoxKey='$MANAGE_CRYPTOX_KEY'"
 
 if [[ -n "$JDBC_CA_CRT" ]]; then

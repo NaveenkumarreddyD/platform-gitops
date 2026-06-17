@@ -63,9 +63,9 @@ else
       || no "catalog $cat_tag ships MAS core $exp_core but MAS_TARGET_VERSION=${MAS_TARGET_VERSION:-unset} — fix the tag or the pin"
     [[ "${MANAGE_TARGET_VERSION:-}" == "$exp_manage" ]] && ok "catalog $cat_tag ships Manage $exp_manage (matches MANAGE_TARGET_VERSION)" \
       || no "catalog $cat_tag ships Manage $exp_manage but MANAGE_TARGET_VERSION=${MANAGE_TARGET_VERSION:-unset} — fix the tag or the pin"
-    if [[ -n "${MANAGE_COMPONENT_VERSION:-}" && "${MANAGE_COMPONENT_VERSION}" != "$exp_manage" ]]; then
-      no "MANAGE_COMPONENT_VERSION=${MANAGE_COMPONENT_VERSION} != catalog Manage $exp_manage — ManageWorkspace will be rejected by the vmanage webhook"
-    fi
+    # NOTE: no MANAGE_COMPONENT_VERSION pin check — the masapp config uses components.*.version=latest,
+    # so the operator resolves base to the catalog's Manage version automatically (no webhook-rejection
+    # risk, and no false failure when the catalog is bumped).
     if [[ -n "${SLS_TARGET_VERSION:-}" && "${SLS_TARGET_VERSION}" != "$exp_sls" ]]; then
       warn "SLS_TARGET_VERSION=${SLS_TARGET_VERSION} != catalog SLS $exp_sls"
     fi

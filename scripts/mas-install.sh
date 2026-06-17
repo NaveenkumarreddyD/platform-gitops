@@ -83,6 +83,12 @@ wait_suite_ready "$INSTANCE_ID" "$CORE_NS" 3600
 banner "11. Wait for Manage to converge (rendered declaratively; account-root auto-generates it)"
 ./scripts/enable-manage.sh "${YES_ARGS[@]}" "$ENVFILE"
 
+banner "11b. Back up auto-generated Manage crypto keys + admin superuser into Vault (DR/reproducibility)"
+# When MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=true, MAS mints the crypto keys itself; capture them
+# (and the operator-generated admin superuser) into Vault so a reinstall/DR can reuse them. Non-fatal.
+./scripts/backup-manage-secrets.sh "$ENVFILE" \
+  || echo ">> WARN: manage-secrets backup skipped/failed (non-fatal). Re-run later: ./scripts/backup-manage-secrets.sh $ENVFILE"
+
 banner "12. Summary + verify"
 ./scripts/status-summary.sh "$ENVFILE" || true
 ./scripts/verify-install.sh "$ENVFILE"

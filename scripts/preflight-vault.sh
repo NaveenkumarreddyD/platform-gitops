@@ -125,7 +125,9 @@ else
   ok "$IP/jdbc-system#ca.crt not required (JDBC_SSL_ENABLED=false)"
 fi
 echo "== manage-crypto =="; check_manage_crypto "$IP/manage-crypto"
-echo "== superuser =="; check_creds "$IP/superuser" username password
+# NOTE: no superuser check here. The MAS admin superuser is created by the operator
+# (${INSTANCE_ID}-credentials-superuser) and backed up into Vault POST-install by
+# scripts/backup-manage-secrets.sh, so it legitimately does not exist at preflight time.
 
 echo "== mas public cert (manual cert management) =="
 # When the Suite runs with manual certificate management, the mas-certs chart renders
