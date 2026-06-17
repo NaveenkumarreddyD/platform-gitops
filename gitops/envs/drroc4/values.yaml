@@ -2,11 +2,10 @@ instanceId: drgitopsapp
 workspaceId: drgitopswks
 mongo: { namespace: mongo-drgitops, members: 3, version: "6.0.12" }
 jdbc:  { sslEnabled: false }
-# dro.syncEnabled gates the DRO->Vault harvest app. Keep it FALSE until DRO is actually deployed
-# (GITOPS_OWNS_DRO=true in the cluster env), otherwise the harvest app fail-loops with nothing to
-# harvest. When enabling DRO/BAS: set GITOPS_OWNS_DRO=true (render+push), flip this to true and
-# re-run bootstrap/apply.sh, then run enable-bas-config.sh. (SLS is always deployed, so sls.syncEnabled stays true.)
-dro:   { namespace: ibm-software-central, syncEnabled: false }
+# Declarative: DRO + SLS are always deployed, so both harvest->Vault apps are always enabled.
+# The harvest jobs gate on their component's readiness internally, so they wait (not fail) until
+# SLS/DRO are up, then write the registration + served CA into Vault.
+dro:   { namespace: ibm-software-central, syncEnabled: true }
 sls:   { syncEnabled: true }
 enable:
   grafana: false
