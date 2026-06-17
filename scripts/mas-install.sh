@@ -36,9 +36,12 @@ banner "6b. Reconcile Mongo CA -> MongoCfg Ready (CA into Vault). Suite verify d
 # Suite gates on its core components). Verifying SystemDatabaseReady here deadlocks. Idempotent.
 SKIP_SUITE_SYSTEMDB_WAIT=true ./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
 
-banner "7. Harvest SLS registration and enable SLSCfg (BEFORE the SystemDatabaseReady/Suite gate)"
-# Official renders mongo+sls configs together; our staging must enable SLS here, BEFORE waiting on
-# the Suite, so SLSCfg -> drgitopsapp-sls-cfg -> catalogmgr can start -> the Suite can then converge.
+banner "7. Harvest SLS registration into Vault, then converge the (already-rendered) SLSCfg"
+# Declarative: SLSCfg is rendered from the START (ENABLE_SLS_CONFIG=true) — no mid-deploy enable or
+# git commit. SLS is up now, so harvest its registration + served CA into Vault; enable-sls-config
+# then finds no config change (idempotent, no commit) and just re-renders + bounce_until_ready the
+# slscfg controller until it registers. Done BEFORE the SystemDatabaseReady gate so SLSCfg ->
+# drgitopsapp-sls-cfg -> catalogmgr can start -> the Suite converges (no catalogmgr<->SLS deadlock).
 ./scripts/sync-runtime-registration.sh --sls-only "$ENVFILE"
 ./scripts/enable-sls-config.sh "${YES_ARGS[@]}" "$ENVFILE"
 wait_resource_ready slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" "$CORE_NS" 1800
