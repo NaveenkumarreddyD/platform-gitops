@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # MAS install — PART 2 of 2: SLS + JDBC + (DRO/BAS) + Suite Ready + Manage.
-# Run after mas-prep.sh, once the Suite exists and SystemDatabaseReady=True.
+# Run after mas-prep.sh, once the Suite exists and MongoCfg is Ready. (SystemDatabaseReady is NOT
+# required up front — it can't go True until SLS is enabled, so this script enables SLS first, then
+# verifies SystemDatabaseReady. This avoids the catalogmgr->SLS deadlock.)
 #
 #   ./scripts/mas-install.sh --yes ../mas-config-repo/envs/drroc4.env
 #
@@ -28,16 +30,23 @@ YES_ARGS=(); [[ "$YES" == 1 ]] && YES_ARGS+=(--yes)
 is_true(){ [[ "${1:-}" =~ ^([1]|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; }
 banner(){ printf '\n############################################################\n# %s\n############################################################\n' "$*"; }
 
-banner "6b. Reconcile Mongo CA into the Suite's MongoCfg (now that the cascade created it)"
-# The cascade creates mongocfg/slscfg AFTER mas-prep's reconcile ran, so they can render with a
-# stale CA and report InvalidConfiguration. Re-run it here, when the CRs exist, to re-render with
-# the live CA and bounce entitymgr-mongocfg so SystemDatabaseReady goes True. Idempotent.
-./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
+banner "6b. Reconcile Mongo CA -> MongoCfg Ready (CA into Vault). Suite verify deferred until after SLS."
+# Get the MongoCfg Ready + live CA in Vault, but DON'T wait for the Suite's SystemDatabaseReady yet:
+# the Suite can't reach it until SLS is enabled (catalogmgr needs the SLS secret to start, and the
+# Suite gates on its core components). Verifying SystemDatabaseReady here deadlocks. Idempotent.
+SKIP_SUITE_SYSTEMDB_WAIT=true ./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
 
-banner "7. Harvest SLS registration and enable SLSCfg"
+banner "7. Harvest SLS registration and enable SLSCfg (BEFORE the SystemDatabaseReady/Suite gate)"
+# Official renders mongo+sls configs together; our staging must enable SLS here, BEFORE waiting on
+# the Suite, so SLSCfg -> drgitopsapp-sls-cfg -> catalogmgr can start -> the Suite can then converge.
 ./scripts/sync-runtime-registration.sh --sls-only "$ENVFILE"
 ./scripts/enable-sls-config.sh "${YES_ARGS[@]}" "$ENVFILE"
 wait_resource_ready slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" "$CORE_NS" 1800
+
+banner "7b. Now verify the Suite can read MongoDB (SystemDatabaseReady) — SLS is up, no deadlock"
+# With SLSCfg Ready, catalogmgr starts and the Suite can converge. This runs the deterministic
+# bounce-retry SystemDatabaseReady verify (the part skipped in 6b).
+./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
 
 banner "8. Sync JdbcCfg"
 ./scripts/sync-jdbc-config.sh "$ENVFILE"

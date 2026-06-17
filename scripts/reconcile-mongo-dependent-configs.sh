@@ -92,7 +92,12 @@ fi
 # Mongo separately (SystemDatabaseReady). That check used to be skipped here, so a stale
 # CA surfaced much later as the opaque Suite error "MongoDB configuration was unable to be
 # verified". Confirm it now, with one extra entitymgr-suite bounce, before declaring success.
-if oc get suite "$INSTANCE_ID" -n "$CORE_NS" >/dev/null 2>&1; then
+if [[ "${SKIP_SUITE_SYSTEMDB_WAIT:-false}" == "true" ]]; then
+  echo ">> SKIP_SUITE_SYSTEMDB_WAIT=true: mongocfg is Ready and the live Mongo CA is in Vault."
+  echo ">> (Suite SystemDatabaseReady is verified LATER, after SLSCfg is enabled — the Suite cannot"
+  echo ">>  reach SystemDatabaseReady until SLS is configured, because catalogmgr needs the SLS"
+  echo ">>  secret to start, and the Suite waits on its core components. Verifying here would deadlock.)"
+elif oc get suite "$INSTANCE_ID" -n "$CORE_NS" >/dev/null 2>&1; then
   echo ">> verifying Suite can actually read MongoDB (SystemDatabaseReady); bouncing entitymgr-suite as needed"
   # The Suite runs its OWN Mongo verify and caches the result, so after the MongoCfg CA is fixed it
   # needs a bounce to re-verify. Bounce -> wait (tolerating the 'ApplyingConfiguration' transitional

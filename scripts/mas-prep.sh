@@ -53,17 +53,23 @@ banner "4. MongoDB prerequisites + publish Mongo CA"
 banner "5. Sync MAS account-root (generates Suite + child apps)"
 ./scripts/sync-mas-account-root.sh "$ENVFILE"
 
-banner "6. Reconcile Mongo CA so the Suite can verify MongoDB"
-./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
+banner "6. Reconcile Mongo CA so the MongoCfg renders with the live CA"
+# Get the MongoCfg Ready + the live CA into Vault, but do NOT wait for the Suite's
+# SystemDatabaseReady here: the Suite cannot reach it until SLS is enabled (catalogmgr needs the
+# SLS secret to start, and the Suite waits on its core components). That verify happens in
+# mas-install AFTER SLSCfg is enabled. Gating on it here would deadlock prep.
+SKIP_SUITE_SYSTEMDB_WAIT=true ./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
 
 cat <<MSG
 
 ############################################################
 # PREP COMPLETE for $INSTANCE_ID.
-# Check before continuing:
-#   oc get suite $INSTANCE_ID -n $CORE_NS -o custom-columns=\\
-#     STATUS:.status.status,SYSTEMDB:.status.conditions[?(@.type=="SystemDatabaseReady")].status
-# When the Suite exists and SystemDatabaseReady=True, run part 2:
+# At this point: the Suite exists, MongoCfg is Ready, and the live Mongo CA is in Vault.
+# NOTE: SystemDatabaseReady will still be 'ApplyingConfiguration' until SLS is enabled — that is
+# EXPECTED. mas-install enables SLS first, then verifies SystemDatabaseReady (no deadlock).
+# Check the MongoCfg before continuing:
+#   oc get mongocfg ${INSTANCE_ID}-mongo-system -n $CORE_NS -o jsonpath='{.status.status}{"\\n"}'   # Ready
+# Then run part 2:
 #   ./scripts/mas-install.sh ${YES_ARGS[*]} $ENVFILE
 ############################################################
 MSG

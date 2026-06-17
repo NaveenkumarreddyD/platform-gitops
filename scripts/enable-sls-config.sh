@@ -92,13 +92,15 @@ set_env_value MAS_CONTRACT_PERFORMANCE false
   fi
 )
 
-SUITE_APP="suite.${CLUSTER_ID}.${INSTANCE_ID}"
+SLS_APP="${INSTANCE_ID}-sls-system.${CLUSTER_ID}"
 
-echo ">> refreshing account-root so application/$SUITE_APP picks up SLSCfg"
-echo ">> syncing $SUITE_APP"
-sync_parent_until_child_exists ibm-mas-account-root "$SUITE_APP" 600
-sync_app_oc "$SUITE_APP" true
-wait_app_synced_healthy "$SUITE_APP" 1200
+# Generate + sync the SLSCfg app (NOT the suite app). The suite app's sync op blocks on FULL Suite
+# health (mongo AND sls), which isn't ready at this stage — waiting on it here is the deadlock.
+# enable-sls's only job is to land a Ready SLSCfg; the Suite convergence is verified by the caller.
+echo ">> refreshing account-root so the SLSCfg app ($SLS_APP) is generated"
+hard_refresh_app ibm-mas-account-root
+sync_parent_until_child_exists ibm-mas-account-root "$SLS_APP" 600
+sync_app_oc "$SLS_APP" false || true
 
 CORE_NS="mas-${INSTANCE_ID}-core"
 SUITE_POD="$(oc get pod -n "$CORE_NS" --no-headers 2>/dev/null | awk '/entitymgr-suite/ {print $1; exit}')"
