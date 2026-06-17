@@ -25,6 +25,7 @@ CLUSTER="$(basename "$ENVFILE" .env)"
 set -a; . "$ENVFILE"; set +a
 : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"; : "${WORKSPACE_ID:?}"
 CORE_NS="mas-${INSTANCE_ID}-core"
+assert_repo_fresh   # refuse to run a stale platform-gitops clone
 
 echo ">> verifying Suite config prerequisites before enabling Manage"
 wait_crd suites.core.mas.ibm.com 1800

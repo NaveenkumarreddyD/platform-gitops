@@ -6,8 +6,9 @@ set -euo pipefail
 # target namespaces, deletes resources, then deletes namespaces. Vault is preserved unless
 # --include-vault is passed.
 #
-# Usage:
-#   ./scripts/delete-gitops-platform.sh --confirm ../mas-gitops-config/envs/drroc4.env
+# Usage (see --help for full details):
+#   ./scripts/delete-gitops-platform.sh drroc4                  # dry run (env resolved by name)
+#   ./scripts/delete-gitops-platform.sh --confirm drroc4        # delete this instance
 #   ./scripts/delete-gitops-platform.sh --confirm --include-vault ../mas-gitops-config/envs/drroc4.env
 #
 # The Argo CD controllers are paused for the duration of the cleanup (so resources cannot be
@@ -16,25 +17,72 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"
 
+usage() {
+  cat <<'USAGE'
+Destructive cleanup for ONE platform-gitops cluster/instance.
+
+Usage:
+  delete-gitops-platform.sh [--confirm] [--include-vault] <cluster.env | cluster-name>
+
+Target (required — this is the safety guardrail):
+  <cluster.env>   Path to the cluster env file, e.g. ../mas-gitops-config/envs/drroc4.env
+  <cluster-name>  OR just the name, e.g. drroc4 — the script finds <repo>/envs/drroc4.env
+                  in the usual config-repo locations.
+  (You may omit the target entirely if CLUSTER_ID and INSTANCE_ID are already exported.)
+
+  The target is required because this delete is SCOPED: it reads CLUSTER_ID / INSTANCE_ID /
+  MONGO_NS / DRO_NAMESPACE so it removes only THIS instance's Argo apps, namespaces, and MAS
+  CRs — never a blind cluster-wide wipe.
+
+Options:
+  --confirm        Actually delete. Without it this is a DRY RUN (nothing is deleted).
+  --include-vault  Also delete the Vault namespace/app (preserved by default).
+  -h, --help       Show this help.
+
+Examples:
+  delete-gitops-platform.sh drroc4                      # dry run, env resolved by name
+  delete-gitops-platform.sh --confirm drroc4            # delete this instance
+  delete-gitops-platform.sh --confirm --include-vault drroc4
+USAGE
+}
+
 CONFIRM=0
 INCLUDE_VAULT=0
-ENVFILE=""
+ENVARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRM=1; shift ;;
     --include-vault) INCLUDE_VAULT=1; shift ;;
-    -h|--help)
-      sed -n '1,15p' "$0"
-      exit 0
-      ;;
-    *) ENVFILE="$1"; shift ;;
+    -h|--help) usage; exit 0 ;;
+    -*) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
+    *) ENVARG="$1"; shift ;;
   esac
 done
-ENVFILE="${ENVFILE:?usage: delete-gitops-platform.sh --confirm <path/to/cluster.env>}"
-[[ -f "$ENVFILE" ]] || { echo "ERROR: env file not found: $ENVFILE" >&2; exit 2; }
 
-# shellcheck disable=SC1090
-set -a; . "$ENVFILE"; set +a
+# Resolve the target from: an explicit path, a bare cluster name, or already-exported vars.
+ENVFILE=""
+if [[ -n "$ENVARG" && -f "$ENVARG" ]]; then
+  ENVFILE="$ENVARG"
+elif [[ -n "$ENVARG" ]]; then
+  for d in "$ROOT/.." "$ROOT/../.." "$ROOT/../../.."; do
+    for repo in mas-gitops-config mas-config-repo; do
+      cand="$d/$repo/envs/${ENVARG}.env"
+      [[ -f "$cand" ]] && { ENVFILE="$cand"; break 2; }
+    done
+  done
+  [[ -n "$ENVFILE" ]] || { echo "ERROR: no env file found for '$ENVARG' (looked for <repo>/envs/${ENVARG}.env under $ROOT/..)." >&2; exit 2; }
+fi
+
+if [[ -n "$ENVFILE" ]]; then
+  echo ">> using env file: $ENVFILE"
+  # shellcheck disable=SC1090
+  set -a; . "$ENVFILE"; set +a
+elif [[ -z "${CLUSTER_ID:-}" || -z "${INSTANCE_ID:-}" ]]; then
+  echo "ERROR: no target given and CLUSTER_ID/INSTANCE_ID are not exported." >&2
+  usage >&2; exit 2
+else
+  echo ">> no env file given; using exported CLUSTER_ID=$CLUSTER_ID INSTANCE_ID=$INSTANCE_ID"
+fi
 : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
 MONGO_NS="${MONGO_NS:-mongo-${INSTANCE_ID}}"
 DRO_NAMESPACE="${DRO_NAMESPACE:-ibm-software-central}"

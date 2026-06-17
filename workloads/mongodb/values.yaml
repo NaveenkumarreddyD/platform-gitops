@@ -3,7 +3,7 @@
 namespace: mongo-drgitops
 resource: drgitopsapp-mongo
 members: 3                       # ibm default mongodb_replicas=3 (3 data + 3 logs PVCs)
-mongodbVersion: "6.0.12"         # mongod for MAS 8.11 / catalog v9-240625
+mongodbVersion: "6.0.12"         # mongod for MAS 8.11.x (incl. v9-250925 / 8.11.26); MongoDB v8 only relevant from v9-251127
 storageClass: isilon
 dataSize: 20Gi                   # ibm default mongodb_storage_capacity_data
 logsSize: 20Gi                   # ibm default mongodb_storage_capacity_logs

@@ -4,6 +4,40 @@ set -euo pipefail
 
 ARGO_NS="${ARGO_NS:-openshift-gitops}"
 
+# assert_repo_fresh [dir]
+# Refuse to run old code: if the local clone is strictly BEHIND origin/<branch>, stop and print
+# the exact pull command. This kills the recurring "fixes not applied because the bastion clone
+# was stale" trap. Skips gracefully when git is missing, the dir isn't a repo, or origin is
+# unreachable (offline). Override with ALLOW_STALE_CLONE=true.
+assert_repo_fresh() {
+  local dir="${1:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." 2>/dev/null && pwd)}"
+  [[ "${ALLOW_STALE_CLONE:-false}" == "true" ]] && { echo ">> ALLOW_STALE_CLONE=true; skipping clone-freshness check"; return 0; }
+  command -v git >/dev/null 2>&1 || return 0
+  git -C "$dir" rev-parse --is-inside-work-tree >/dev/null 2>&1 || return 0
+  local branch; branch="$(git -C "$dir" branch --show-current 2>/dev/null || true)"
+  [[ -n "$branch" ]] || return 0
+  # Never block on a credential/host prompt: fail fast and skip the check instead of hanging.
+  if ! GIT_TERMINAL_PROMPT=0 GIT_SSH_COMMAND="ssh -o BatchMode=yes -o StrictHostKeyChecking=accept-new" \
+       git -C "$dir" fetch --quiet origin "$branch" 2>/dev/null; then
+    echo ">> (could not fetch origin/$branch; skipping clone-freshness check)"; return 0
+  fi
+  local local_sha remote_sha
+  local_sha="$(git -C "$dir" rev-parse HEAD 2>/dev/null || true)"
+  remote_sha="$(git -C "$dir" rev-parse "origin/$branch" 2>/dev/null || true)"
+  [[ -n "$remote_sha" && -n "$local_sha" && "$local_sha" != "$remote_sha" ]] || return 0
+  if git -C "$dir" merge-base --is-ancestor "$local_sha" "$remote_sha" 2>/dev/null; then
+    echo "ERROR: your clone is BEHIND origin/$branch — you would run STALE code." >&2
+    echo "       dir   : $dir" >&2
+    echo "       local : $local_sha" >&2
+    echo "       origin: $remote_sha" >&2
+    echo "       Fix:  git -C \"$dir\" pull --ff-only   (then re-run)" >&2
+    echo "       (set ALLOW_STALE_CLONE=true to bypass)" >&2
+    exit 1
+  fi
+  echo ">> NOTE: clone has diverged from origin/$branch (local commits present); continuing." >&2
+  return 0
+}
+
 hard_refresh_app() {
   local app="${1:?app name}"
   oc annotate application "$app" -n "$ARGO_NS" argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
@@ -48,13 +82,17 @@ wait_config_repo_published() {
     return 0
   }
 
-  expected="$(git -C "$config_repo" rev-parse HEAD)"
+  expected="$(git -C "$config_repo" rev-parse HEAD 2>/dev/null || true)"
   repo_url="$(cluster_generator_setting "$cluster" repo_url)"
   revision="$(cluster_generator_setting "$cluster" revision)"
   repo_url="${repo_url:-$(git -C "$config_repo" config --get remote.origin.url || true)}"
   revision="${revision:-$(git -C "$config_repo" branch --show-current || true)}"
   revision="${revision:-main}"
 
+  [[ -n "$expected" ]] || {
+    echo "ERROR: cannot read HEAD of config repo $config_repo (not a git repo?); skipping publish wait." >&2
+    return 0
+  }
   [[ -n "$repo_url" ]] || {
     echo "ERROR: cannot determine MAS config generator repo URL for cluster $cluster" >&2
     return 1

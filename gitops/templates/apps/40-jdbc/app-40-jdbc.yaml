@@ -8,10 +8,8 @@ metadata:
   namespace: {{ .Values.argoNamespace }}
   labels:
     app.kubernetes.io/part-of: mas-platform
-    mas.ibm.com/manual-gate: mas-config-crds
   annotations:
     argocd.argoproj.io/sync-wave: "40"
-    mas.ibm.com/manual-sync-reason: "Sync after MAS Suite installs config.mas.ibm.com CRDs"
   finalizers: [ resources-finalizer.argocd.argoproj.io ]
 spec:
   revisionHistoryLimit: 10
@@ -37,10 +35,15 @@ spec:
             jdbc_password: "<path:{{ include "gitops.path" . }}/jdbc-system#password>"
             jdbc_ca_crt: "<path:{{ include "gitops.path" . }}/jdbc-system#ca.crt>"
   syncPolicy:
+    {{- if .Values.jdbc.autoSync }}
+    # Safe to auto-sync: a PreSync hook (workloads/jdbc/templates/presync-await-crd.yaml)
+    # blocks until the JdbcCfg CRD installed by MAS Suite is Established, so ArgoCD never
+    # tries to apply the JdbcCfg before its CRD exists. selfHeal retries until ready.
+    automated:
+      selfHeal: true
+      prune: true
+    {{- end }}
     syncOptions:
       - CreateNamespace=true
       - SkipDryRunOnMissingResource=true
-  # Intentionally manual. This chart creates JdbcCfg, whose CRD is installed by
-  # MAS Suite. A PreSync hook and scripts/sync-jdbc-config.sh both gate on that
-  # CRD before applying JdbcCfg.
 {{- end }}

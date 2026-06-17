@@ -23,6 +23,7 @@ ENVFILE="${ENVFILE:?usage: mas-prep.sh [--yes] <path/to/cluster.env>}"
 # shellcheck disable=SC1090
 set -a; . "$ENVFILE"; set +a
 : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
+assert_repo_fresh   # refuse to run a stale platform-gitops clone
 CORE_NS="mas-${INSTANCE_ID}-core"
 YES_ARGS=(); [[ "$YES" == 1 ]] && YES_ARGS+=(--yes)
 is_true(){ [[ "${1:-}" =~ ^([1]|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; }

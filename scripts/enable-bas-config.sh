@@ -25,6 +25,7 @@ set -a; . "$ENVFILE"; set +a
 : "${ACCOUNT_ID:?}"; : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
 KV="${KV_MOUNT:-secret}"; VAULT_NS="${VAULT_NS:-vault}"; VAULT_POD="${VAULT_POD:-vault-0}"; VADDR="${VADDR:-http://127.0.0.1:8200}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
+assert_repo_fresh   # refuse to run a stale platform-gitops clone
 
 IP="$ACCOUNT_ID/$CLUSTER_ID/$INSTANCE_ID"
 field() {
@@ -36,6 +37,11 @@ echo ">> verifying DRO values exist in Vault before enabling BAS"
 for k in url api_token ca.crt; do
   [[ -n "$(field "$IP/dro" "$k")" ]] || { echo "ERROR: missing $KV/$IP/dro#$k. Run sync-runtime-registration.sh first."; exit 1; }
 done
+# ca.crt must be a REAL PEM (the DRO reencrypt route serves the ingress cert, not the kube CA —
+# an invalid/empty CA here is what causes BASCfg CERTIFICATE_VERIFY_FAILED). The harvest's served-CA
+# fallback should have written the chain that validates the route; gate the enable on a real cert.
+field "$IP/dro" ca.crt | grep -q "BEGIN CERTIFICATE" || {
+  echo "ERROR: $KV/$IP/dro#ca.crt is not a valid PEM. Re-run the DRO harvest: ./scripts/sync-runtime-registration.sh --dro-only $ENVFILE" >&2; exit 1; }
 
 echo ">> enabling ENABLE_BAS_CONFIG=true in $ENVFILE"
 set_env_true() {

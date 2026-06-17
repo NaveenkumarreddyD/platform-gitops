@@ -27,6 +27,7 @@ set -a; . "$ENVFILE"; set +a
 : "${ACCOUNT_ID:?}"; : "${CLUSTER_ID:?}"; : "${INSTANCE_ID:?}"
 KV="${KV_MOUNT:-secret}"; VAULT_NS="${VAULT_NS:-vault}"; VAULT_POD="${VAULT_POD:-vault-0}"; VADDR="${VADDR:-http://127.0.0.1:8200}"
 [[ -z "${VAULT_TOKEN:-}" ]] && { echo "ERROR: export VAULT_TOKEN first" >&2; exit 1; }
+assert_repo_fresh   # refuse to run a stale platform-gitops clone
 
 IP="$ACCOUNT_ID/$CLUSTER_ID/$INSTANCE_ID"
 field() {
@@ -39,6 +40,11 @@ REQUIRE_SLS_REGISTRATION=true ./scripts/preflight-vault.sh --phase full "$ENVFIL
 for k in registration_key url ca.crt; do
   [[ -n "$(field "$IP/sls" "$k")" ]] || { echo "ERROR: missing $KV/$IP/sls#$k. Run sync-runtime-registration.sh --sls-only first."; exit 1; }
 done
+# ca.crt must be a REAL PEM, not empty/garbage — an invalid CA here is exactly what produces
+# SLSCfg RegistrationFailed / CERTIFICATE_VERIFY_FAILED. Gate the enable on a valid cert so the
+# SLSCfg only ever renders with trustworthy material (official model harvests ca before the config syncs).
+field "$IP/sls" ca.crt | grep -q "BEGIN CERTIFICATE" || {
+  echo "ERROR: $KV/$IP/sls#ca.crt is not a valid PEM. Re-run the SLS harvest: ./scripts/sync-runtime-registration.sh --sls-only $ENVFILE" >&2; exit 1; }
 
 echo ">> waiting for MAS config CRD slscfgs.config.mas.ibm.com"
 wait_crd slscfgs.config.mas.ibm.com 1800
@@ -100,3 +106,7 @@ if [[ -n "$SUITE_POD" ]]; then
   echo ">> deleting pod/$SUITE_POD in $CORE_NS so Suite controller re-reads updated gates"
   oc delete pod "$SUITE_POD" -n "$CORE_NS" --ignore-not-found
 fi
+
+echo ">> waiting for $CORE_NS/slscfgs/${INSTANCE_ID}-sls-system to register (Ready)"
+wait_resource_ready slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" "$CORE_NS" 1800
+echo ">> SLS config enabled and Ready."

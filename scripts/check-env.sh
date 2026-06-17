@@ -38,6 +38,40 @@ for k in MAS_CHANNEL SLS_CHANNEL MAS_APP_CHANNEL MAS_TARGET_VERSION MANAGE_TARGE
   [[ -n "$v" ]] && ok "$k=$v" || no "$k unset (required to control the deployed version)"
 done
 
+# Catalog <-> version consistency. The catalog tag is the master pin for EVERY app version;
+# if the target pins don't match what the tag actually ships, you get a silent version skew
+# (e.g. Manage installs the catalog's channel head, the ManageWorkspace requests your pin,
+# and the vmanage webhook rejects it / the Maximo DB update fails). Verified against the IBM
+# catalog manifests at https://ibm-mas.github.io/cli/catalogs/. Add new tags here as you adopt them.
+echo "== catalog <-> version consistency =="
+cat_tag="${MAS_CATALOG_VERSION:-}"
+if [[ -z "$cat_tag" ]]; then
+  no "MAS_CATALOG_VERSION unset (the catalog tag is the master version pin)"
+else
+  exp_core=""; exp_manage=""; exp_sls=""
+  case "$cat_tag" in
+    v9-240625-amd64) exp_core=8.11.12; exp_manage=8.7.9;  exp_sls=3.9.1  ;;
+    v9-250828-amd64) exp_core=8.11.25; exp_manage=8.7.23; exp_sls=3.12.2 ;;
+    v9-250925-amd64) exp_core=8.11.26; exp_manage=8.7.24; exp_sls=3.12.2 ;;
+    v9-251030-amd64) exp_core=8.11.27; exp_manage=8.7.25; exp_sls=3.12.2 ;;
+    v9-251127-amd64) exp_core=8.11.28; exp_manage=8.7.26; exp_sls=3.12.2 ;;
+  esac
+  if [[ -z "$exp_core" ]]; then
+    warn "catalog $cat_tag not in the known map; cannot verify it ships MAS ${MAS_TARGET_VERSION:-?} / Manage ${MANAGE_TARGET_VERSION:-?}. Confirm at ibm-mas.github.io/cli/catalogs/$cat_tag/ and add it to check-env.sh."
+  else
+    [[ "${MAS_TARGET_VERSION:-}"    == "$exp_core"   ]] && ok "catalog $cat_tag ships MAS core $exp_core (matches MAS_TARGET_VERSION)" \
+      || no "catalog $cat_tag ships MAS core $exp_core but MAS_TARGET_VERSION=${MAS_TARGET_VERSION:-unset} — fix the tag or the pin"
+    [[ "${MANAGE_TARGET_VERSION:-}" == "$exp_manage" ]] && ok "catalog $cat_tag ships Manage $exp_manage (matches MANAGE_TARGET_VERSION)" \
+      || no "catalog $cat_tag ships Manage $exp_manage but MANAGE_TARGET_VERSION=${MANAGE_TARGET_VERSION:-unset} — fix the tag or the pin"
+    if [[ -n "${MANAGE_COMPONENT_VERSION:-}" && "${MANAGE_COMPONENT_VERSION}" != "$exp_manage" ]]; then
+      no "MANAGE_COMPONENT_VERSION=${MANAGE_COMPONENT_VERSION} != catalog Manage $exp_manage — ManageWorkspace will be rejected by the vmanage webhook"
+    fi
+    if [[ -n "${SLS_TARGET_VERSION:-}" && "${SLS_TARGET_VERSION}" != "$exp_sls" ]]; then
+      warn "SLS_TARGET_VERSION=${SLS_TARGET_VERSION} != catalog SLS $exp_sls"
+    fi
+  fi
+fi
+
 echo "== required secret inputs =="
 [[ -n "${VAULT_TOKEN:-}" ]] && ok "VAULT_TOKEN exported" || no "export VAULT_TOKEN first"
 if [[ "${CHECK_SECRET_INPUTS:-true}" =~ ^([Ff][Aa][Ll][Ss][Ee]|0|[Nn][Oo])$ ]]; then

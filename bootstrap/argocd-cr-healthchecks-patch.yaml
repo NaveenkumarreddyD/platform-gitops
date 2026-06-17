@@ -21,6 +21,14 @@ spec:
       - TaskRun
       - PipelineRun
   extraConfig:
+    # Speed up how quickly ArgoCD notices new Config Repository commits during a deployment.
+    # ArgoCD default is timeout.reconciliation=120s + jitter=60s (=> up to ~3 min before a
+    # pushed commit is auto-detected). Lowering to 90s + 30s jitter picks up mid-deploy commits
+    # in ~60-120s. Kept moderate on purpose: every reconcile re-runs the AVP plugin (Vault reads),
+    # so going much lower increases Vault load. For an INSTANT pull use scripts/refresh-config.sh.
+    # The OpenShift GitOps operator rolls the application-controller + repo-server when this changes.
+    timeout.reconciliation: "90s"
+    timeout.reconciliation.jitter: "30s"
     resource.customizations: |
       sls.ibm.com/LicenseService:
         health.lua: |

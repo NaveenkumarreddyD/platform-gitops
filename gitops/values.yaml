@@ -30,10 +30,14 @@ vault:
     keysSecret: vault-unseal-keys
     schedule: "*/2 * * * *"
 
-# Keep IBM MAS account-root manual by default. Sync it only after Vault is initialized,
-# required secrets are loaded, and the dedicated MongoDB is Running.
-accountRoot: { autoSync: false, clusterAdminRole: true, applicationAdminRole: true }
-registrationSync: { autoSync: false }   # sync manually after account-root creates SLS/DRO runtime values
+# Declarative orchestration (official model): account-root and registration-sync AUTO-SYNC.
+# ArgoCD + the registered CR healthchecks gate the waves on real readiness, and selfHeal retries
+# until prerequisites exist — so you do NOT hand-sync the cascade.
+# REQUIRED ORDER: seed Vault (static secrets via load-secrets.sh + the public cert via
+# load-mas-public-cert.sh) and let MongoDB come up BEFORE the cascade can fully render. The
+# account-root will fail-and-retry harmlessly until those are present, then selfHeal converges.
+accountRoot: { autoSync: true, clusterAdminRole: true, applicationAdminRole: true }
+registrationSync: { autoSync: true }   # vault-sync apps auto-run; their jobs gate on SLS/DRO readiness internally
 grafana: { namespace: grafana }
 operatorsNamespace: platform-operators
 mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: community-operator, version: "0.9.0" }   # MongoDB Community Operator (supports mongod 6.0.12)
@@ -57,7 +61,7 @@ clusterId: ""
 instanceId: ""
 workspaceId: ""
 mongo: { namespace: "", members: 3, version: "6.0.12", adminUser: admin }
-jdbc:  { sslEnabled: false }
+jdbc:  { sslEnabled: false, autoSync: true }   # autoSync safe: PreSync hook awaits the JdbcCfg CRD first
 dro:   { namespace: ibm-software-central, syncEnabled: false }
 sls:   { syncEnabled: true }
 masCerts:
