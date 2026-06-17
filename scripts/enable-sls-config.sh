@@ -103,12 +103,23 @@ sync_parent_until_child_exists ibm-mas-account-root "$SLS_APP" 600
 sync_app_oc "$SLS_APP" false || true
 
 CORE_NS="mas-${INSTANCE_ID}-core"
+
+# Re-render the SLSCfg with the CURRENT Vault CA, then bounce the slscfg controller until it
+# registers. The slscfg controller caches its TLS verify: if it first tried to register before the
+# served SLS CA was in Vault, it cached a CERTIFICATE_VERIFY_FAILED and a single wait never recovers
+# (you'd have to bounce entitymgr-slscfg by hand). Retry bounce-and-wait (same pattern as mongocfg)
+# so SLS converges deterministically. Relies on the SLS registration + served-CA already being
+# harvested into Vault (sync-runtime-registration --sls-only, which the caller/mas-install runs first).
+echo ">> re-rendering SLSCfg with current Vault CA, then bouncing entitymgr-slscfg until registered"
+hard_refresh_app "$SLS_APP"
+sync_app_oc "$SLS_APP" false || true
+bounce_until_ready "$CORE_NS" 'entitymgr-slscfg' \
+  slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" "$CORE_NS" 4 300
+
+# Now that SLSCfg is Ready, bounce the Suite operator so SLSIntegrationReady picks it up.
 SUITE_POD="$(oc get pod -n "$CORE_NS" --no-headers 2>/dev/null | awk '/entitymgr-suite/ {print $1; exit}')"
 if [[ -n "$SUITE_POD" ]]; then
-  echo ">> deleting pod/$SUITE_POD in $CORE_NS so Suite controller re-reads updated gates"
+  echo ">> deleting pod/$SUITE_POD so the Suite re-reads the now-Ready SLSCfg (SLSIntegrationReady)"
   oc delete pod "$SUITE_POD" -n "$CORE_NS" --ignore-not-found
 fi
-
-echo ">> waiting for $CORE_NS/slscfgs/${INSTANCE_ID}-sls-system to register (Ready)"
-wait_resource_ready slscfgs.config.mas.ibm.com "${INSTANCE_ID}-sls-system" "$CORE_NS" 1800
-echo ">> SLS config enabled and Ready."
+echo ">> SLS config enabled and SLSCfg Ready."
