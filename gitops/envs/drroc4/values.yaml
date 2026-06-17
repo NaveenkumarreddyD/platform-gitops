@@ -1,6 +1,6 @@
 instanceId: drgitopsapp
 workspaceId: drgitopswks
-mongo: { namespace: mongo-drgitops, members: 3, version: "6.0.12" }
+mongo: { namespace: mongo-drgitops, members: 3, version: "7.0.23" }
 jdbc:  { sslEnabled: false }
 # Declarative: DRO + SLS are always deployed, so both harvest->Vault apps are always enabled.
 # The harvest jobs gate on their component's readiness internally, so they wait (not fail) until

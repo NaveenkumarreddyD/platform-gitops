@@ -26,6 +26,10 @@ spec:
       values: |
         community-operator-crds: { enabled: true }
         operator: { watchNamespace: {{ include "gitops.mongoNs" . }} }
+        mongodb:
+          name: {{ .Values.mongoImage.name | quote }}
+          repo: {{ .Values.mongoImage.repo | quote }}
+          imageType: {{ .Values.mongoImage.imageType | quote }}
   syncPolicy:
     automated: { prune: true, selfHeal: true }
     retry:
