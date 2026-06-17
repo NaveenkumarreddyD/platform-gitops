@@ -359,6 +359,31 @@ wait_resource_ready() {
   done
 }
 
+# bounce_until_ready <ctrl_ns> <ctrl_pod_pattern> <resource> <name> <res_ns> [attempts] [per_timeout]
+# Bounce a MAS entity-manager controller pod, then wait for its CR to go Ready; retry the
+# whole bounce-and-wait a few times. This defeats the cache/race where a controller verified
+# (and cached a failure) BEFORE the corrected input (e.g. Mongo CA) landed in the CR — a single
+# bounce can lose that race, so we retry until the controller re-verifies clean. Returns 0 on Ready.
+bounce_until_ready() {
+  local cns="${1:?ctrl ns}" pat="${2:?pod pattern}" res="${3:?resource}" name="${4:?name}" rns="${5:?res ns}"
+  local attempts="${6:-4}" per_timeout="${7:-240}" i pod
+  for (( i=1; i<=attempts; i++ )); do
+    pod="$(oc get pod -n "$cns" --no-headers 2>/dev/null | awk -v p="$pat" '$1 ~ p {print $1; exit}')"
+    if [[ -n "$pod" ]]; then
+      echo ">> [attempt $i/$attempts] bouncing $cns/$pod so $res/$name re-verifies"
+      oc delete pod "$pod" -n "$cns" --ignore-not-found >/dev/null 2>&1 || true
+    else
+      echo ">> [attempt $i/$attempts] no pod matching /$pat/ in $cns yet"
+    fi
+    if wait_resource_ready "$res" "$name" "$rns" "$per_timeout"; then
+      return 0
+    fi
+    echo ">> $res/$name still not Ready after attempt $i/$attempts"
+  done
+  echo "ERROR: $res/$name did not reach Ready after $attempts bounce attempts" >&2
+  return 1
+}
+
 wait_suite_ready() {
   local suite="${1:?suite name}" namespace="${2:?namespace}" timeout="${3:-3600}" elapsed=0 status="" generation="" observed="" last_report=-60
   while :; do

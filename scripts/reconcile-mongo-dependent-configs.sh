@@ -69,8 +69,10 @@ echo ">> syncing live Mongo CA into Vault"
 
 echo ">> re-rendering MAS MongoCfg from updated Vault CA"
 sync_if_exists "${INSTANCE_ID}-mongo-system.${CLUSTER_ID}" false healthy
-delete_first_pod_matching "$CORE_NS" 'entitymgr-mongocfg'
-wait_resource_ready mongocfgs.config.mas.ibm.com "${INSTANCE_ID}-mongo-system" "$CORE_NS" 1800
+# Bounce-and-wait WITH RETRY: the mongocfg controller caches its TLS verify, and a single bounce
+# can race the re-rendered CR (bounce before the corrected CA lands -> still fails). Retry until Ready.
+bounce_until_ready "$CORE_NS" 'entitymgr-mongocfg' \
+  mongocfgs.config.mas.ibm.com "${INSTANCE_ID}-mongo-system" "$CORE_NS" 4 240
 
 echo ">> re-rendering SLS LicenseService from updated Vault CA"
 sync_if_exists "sls.${CLUSTER_ID}.${INSTANCE_ID}" false healthy
@@ -91,20 +93,26 @@ fi
 # CA surfaced much later as the opaque Suite error "MongoDB configuration was unable to be
 # verified". Confirm it now, with one extra entitymgr-suite bounce, before declaring success.
 if oc get suite "$INSTANCE_ID" -n "$CORE_NS" >/dev/null 2>&1; then
-  echo ">> verifying Suite can actually read MongoDB (SystemDatabaseReady)"
-  if ! wait_suite_condition "$INSTANCE_ID" "$CORE_NS" SystemDatabaseReady 900; then
-    echo ">> SystemDatabaseReady still not True; bouncing entitymgr-suite once more"
+  echo ">> verifying Suite can actually read MongoDB (SystemDatabaseReady); bouncing entitymgr-suite as needed"
+  # The Suite runs its OWN Mongo verify and caches the result, so after the MongoCfg CA is fixed it
+  # needs a bounce to re-verify. Bounce -> wait (tolerating the 'ApplyingConfiguration' transitional
+  # state, which wait_suite_condition treats as not-yet-True) -> retry. Each wait is generous because a
+  # bounce restarts the Suite's full reconcile (~210 tasks). This removes the manual-bounce step.
+  sysdb_ready=0
+  for attempt in 1 2 3; do
     delete_first_pod_matching "$CORE_NS" 'entitymgr-suite'
-    if ! wait_suite_condition "$INSTANCE_ID" "$CORE_NS" SystemDatabaseReady 600; then
-      echo "ERROR: Suite cannot verify MongoDB (SystemDatabaseReady not True). Two common causes:" >&2
-      echo "  1. Stale Mongo CA: live Mongo cert disagrees with" >&2
-      echo "     ${KV_MOUNT:-secret}/${ACCOUNT_ID:-<account>}/$CLUSTER_ID/$INSTANCE_ID/mongo#ca.crt (recreated Mongo?)." >&2
-      echo "  2. The Suite reconcile aborted UPSTREAM (e.g. missing public cert -> 'Get Public Route" >&2
-      echo "     certificates' NoneType failure), so mas-mongo-config/mas-mongo-credentials were never" >&2
-      echo "     created. In that case this is a symptom: read the operator log above and fix the" >&2
-      echo "     upstream failure first (often: ./scripts/load-mas-public-cert.sh <env> <cert.pfx>)." >&2
-      exit 1
-    fi
+    if wait_suite_condition "$INSTANCE_ID" "$CORE_NS" SystemDatabaseReady 900; then sysdb_ready=1; break; fi
+    echo ">> SystemDatabaseReady still not True after bounce attempt $attempt/3; retrying"
+  done
+  if [[ "$sysdb_ready" != 1 ]]; then
+    echo "ERROR: Suite cannot verify MongoDB (SystemDatabaseReady not True). Two common causes:" >&2
+    echo "  1. Stale Mongo CA: live Mongo cert disagrees with" >&2
+    echo "     ${KV_MOUNT:-secret}/${ACCOUNT_ID:-<account>}/$CLUSTER_ID/$INSTANCE_ID/mongo#ca.crt (recreated Mongo?)." >&2
+    echo "  2. The Suite reconcile aborted UPSTREAM (e.g. missing public cert -> 'Get Public Route" >&2
+    echo "     certificates' NoneType failure), so mas-mongo-config/mas-mongo-credentials were never" >&2
+    echo "     created. In that case this is a symptom: read the operator log above and fix the" >&2
+    echo "     upstream failure first (often: ./scripts/load-mas-public-cert.sh <env> <cert.pfx>)." >&2
+    exit 1
   fi
 fi
 
