@@ -238,8 +238,17 @@ wait_crd() {
 }
 
 resource_status() {
-  local resource="${1:?resource}" name="${2:?name}" namespace="${3:?namespace}"
-  oc get "$resource" "$name" -n "$namespace" -o jsonpath='{.status.status}' 2>/dev/null || true
+  local resource="${1:?resource}" name="${2:?name}" namespace="${3:?namespace}" s="" r=""
+  s="$(oc get "$resource" "$name" -n "$namespace" -o jsonpath='{.status.status}' 2>/dev/null || true)"
+  # Some MAS config CRs (MongoCfg/SlsCfg/JdbcCfg/BasCfg) leave .status.status EMPTY and report
+  # readiness via a Ready=True condition instead (the printer "STATUS" column comes from there).
+  # Without this, wait_resource_ready hangs forever on a CR that is actually Ready.
+  if [[ -z "$s" ]]; then
+    r="$(oc get "$resource" "$name" -n "$namespace" \
+      -o jsonpath='{.status.conditions[?(@.type=="Ready")].status}' 2>/dev/null || true)"
+    [[ "$r" == "True" ]] && s="Ready"
+  fi
+  printf '%s' "$s"
 }
 
 # Wait for a resource to simply EXIST (not necessarily Ready). Use for CRs that are created
