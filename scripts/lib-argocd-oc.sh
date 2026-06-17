@@ -303,7 +303,10 @@ wait_suite_ready() {
     status="$(resource_status suite "$suite" "$namespace")"
     generation="$(oc get suite "$suite" -n "$namespace" -o jsonpath='{.metadata.generation}' 2>/dev/null || true)"
     observed="$(oc get suite "$suite" -n "$namespace" -o jsonpath='{.status.observedGeneration}' 2>/dev/null || true)"
-    [[ "$status" == "Ready" && ( -z "$generation" || "$generation" == "$observed" ) ]] && {
+    # Only enforce the generation match when the CR actually reports observedGeneration.
+    # The MAS Suite CR does NOT populate .status.observedGeneration, so gating on it would
+    # hang forever even when the Suite is Ready. If observed is absent, trust status==Ready.
+    [[ "$status" == "Ready" && ( -z "$observed" || "$generation" == "$observed" ) ]] && {
       echo ">> suite/$suite Ready"
       return 0
     }
