@@ -100,10 +100,11 @@ operandrequests.operator.ibm.com truststores.truststore-mgr.ibm.com"
 for ns in "${NS_LIST[@]}"; do
   oc get ns "$ns" >/dev/null 2>&1 || continue
   (
+    set +e   # teardown: a single failed oc call (e.g. CRD type not installed) must NOT abort this subshell
     for crd in $MAS_CRDS; do
       oc get "$crd" -n "$ns" -o name 2>/dev/null | while read -r o; do
         [[ -n "$o" ]] && oc patch "$o" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
-      done
+      done || true
     done
     oc delete ns "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
     echo "  deleting namespace/$ns"
