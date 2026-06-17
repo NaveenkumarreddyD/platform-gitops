@@ -71,14 +71,37 @@ echo ">> re-rendering MAS MongoCfg from updated Vault CA"
 sync_if_exists "${INSTANCE_ID}-mongo-system.${CLUSTER_ID}" false healthy
 # Bounce-and-wait WITH RETRY: the mongocfg controller caches its TLS verify, and a single bounce
 # can race the re-rendered CR (bounce before the corrected CA lands -> still fails). Retry until Ready.
-bounce_until_ready "$CORE_NS" 'entitymgr-mongocfg' \
-  mongocfgs.config.mas.ibm.com "${INSTANCE_ID}-mongo-system" "$CORE_NS" 4 240
+# GUARD: only bounce/wait if the MongoCfg CR actually exists. The CA harvest above can legitimately
+# run EARLY (right after the dedicated Mongo is up, e.g. mas-prep) — before the instance cascade has
+# generated the MAS MongoCfg. Without this guard, bounce_until_ready idles ~16min on a missing CR.
+if oc get mongocfgs.config.mas.ibm.com "${INSTANCE_ID}-mongo-system" -n "$CORE_NS" >/dev/null 2>&1; then
+  bounce_until_ready "$CORE_NS" 'entitymgr-mongocfg' \
+    mongocfgs.config.mas.ibm.com "${INSTANCE_ID}-mongo-system" "$CORE_NS" 4 240
+else
+  echo ">> MongoCfg ${INSTANCE_ID}-mongo-system not present yet (instance cascade has not generated it)."
+  echo ">> The Mongo CA is now in Vault; the MongoCfg will pick it up when the instance is deployed."
+  echo ">> Re-run this reconcile after the MAS instance/core operators exist to bounce + verify it."
+fi
 
-echo ">> re-rendering SLS LicenseService from updated Vault CA"
-sync_if_exists "sls.${CLUSTER_ID}.${INSTANCE_ID}" false healthy
-delete_first_pod_matching "$SLS_NS" 'ibm-sls-controller-manager'
+# Drive the wave-100 SLS LicenseService to Ready. sync-mongo-ca above already wrote the live Mongo CA
+# to Vault and re-synced the sls app. The SLS controller caches its Mongo TLS verify on first connect
+# (before the CA was mounted), so it parks at Failure=True (Argo: Degraded) and a single bounce can
+# race the re-render. Bounce-retry until Ready — the same deterministic pattern as mongocfg/slscfg.
+# GUARD: skip if the LicenseService CR doesn't exist yet (the wave-100 sls app may not be generated
+# when this runs early, e.g. mas-prep). Do NOT wait for the sls app to be "healthy" before bouncing —
+# it is Degraded precisely BECAUSE the bounce hasn't happened yet, so that wait would deadlock.
 if oc get licenseservices.sls.ibm.com -n "$SLS_NS" >/dev/null 2>&1; then
-  wait_license_service_ready 1800
+  echo ">> driving the SLS LicenseService to Ready (bounce-retry; controller caches its Mongo TLS verify)"
+  sls_ready=0
+  for attempt in 1 2 3 4 5; do
+    delete_first_pod_matching "$SLS_NS" 'ibm-sls-controller-manager'
+    if wait_license_service_ready 360; then sls_ready=1; break; fi
+    echo ">> SLS LicenseService not Ready after bounce $attempt/5; retrying"
+  done
+  [[ "$sls_ready" == 1 ]] || { echo "ERROR: SLS LicenseService never reached Ready after 5 bounces" >&2; exit 1; }
+else
+  echo ">> SLS LicenseService not present yet (wave-100 sls app not generated); skipping the bounce."
+  echo ">> mas-install step 6b waits for the CR, then re-runs this reconcile to drive it Ready."
 fi
 
 echo ">> refreshing Suite after Mongo/SLS dependencies"

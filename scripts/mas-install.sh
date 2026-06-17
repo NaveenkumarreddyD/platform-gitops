@@ -30,10 +30,23 @@ YES_ARGS=(); [[ "$YES" == 1 ]] && YES_ARGS+=(--yes)
 is_true(){ [[ "${1:-}" =~ ^([1]|[Tt][Rr][Uu][Ee]|[Yy][Ee][Ss])$ ]]; }
 banner(){ printf '\n############################################################\n# %s\n############################################################\n' "$*"; }
 
-banner "6b. Reconcile Mongo CA -> MongoCfg Ready (CA into Vault). Suite verify deferred until after SLS."
-# Get the MongoCfg Ready + live CA in Vault, but DON'T wait for the Suite's SystemDatabaseReady yet:
-# the Suite can't reach it until SLS is enabled (catalogmgr needs the SLS secret to start, and the
-# Suite gates on its core components). Verifying SystemDatabaseReady here deadlocks. Idempotent.
+banner "6b. Mongo CA -> Vault + drive the wave-100 SLS LicenseService to Ready (unblocks wave 130)"
+# The wave-100 SLS LicenseService caches its Mongo TLS verify on first connect and parks at
+# Failure=True (Argo: Degraded). That blocks the ENTIRE cascade — wave 130 (MongoCfg/SLSCfg/BASCfg)
+# is NOT generated until the sls app is Healthy. So we must clear it here, deterministically:
+#   1. wait for the LicenseService CR to be created (wave 100 sync), then
+#   2. run the idempotent reconcile, which writes the live Mongo CA to Vault and bounce-retries the
+#      SLS controller until the LicenseService is Ready.
+# Suite SystemDatabaseReady is deferred (skip) — it can't pass until SLS is configured (catalogmgr
+# needs the SLS secret to start, and the Suite gates on its core components -> deadlock if verified
+# here). It is verified later in 7b once SLSCfg is Ready. All steps are idempotent / re-runnable.
+SLS_NS="mas-${INSTANCE_ID}-sls"
+e=0
+until [[ -n "$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)" ]]; do
+  (( e >= 1200 )) && { echo "ERROR: SLS LicenseService CR was never created (wave-100 sls app not synced)." >&2
+    echo "Check: oc get application sls.${CLUSTER_ID}.${INSTANCE_ID} -n ${ARGO_NS:-openshift-gitops}" >&2; exit 1; }
+  echo ">> waiting for the wave-100 SLS LicenseService CR to be created (${e}s)"; sleep 15; (( e += 15 ))
+done
 SKIP_SUITE_SYSTEMDB_WAIT=true ./scripts/reconcile-mongo-dependent-configs.sh "$ENVFILE"
 
 banner "7. Harvest SLS registration into Vault, then converge the (already-rendered) SLSCfg"
