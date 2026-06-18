@@ -37,6 +37,6 @@ spec:
   syncPolicy:
     automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
-      limit: 5
-      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+      limit: 30
+      backoff: { duration: 5s, factor: 2, maxDuration: 5m }
 {{- end }}

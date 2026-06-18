@@ -39,8 +39,11 @@ spec:
   syncPolicy:
     automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
-      limit: 5
-      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+      # generous: the RoleBindings target mas-*-sls/-core namespaces created LATER by the instance
+      # cascade. If this app syncs first, the apply fails until those namespaces exist — keep
+      # retrying (~hours) so it self-heals through a slow cascade instead of giving up.
+      limit: 30
+      backoff: { duration: 5s, factor: 2, maxDuration: 5m }
 {{- else }}
   # Intentionally no automated syncPolicy. Run scripts/sync-runtime-registration.sh
   # after SLS is initialized.
@@ -85,8 +88,11 @@ spec:
   syncPolicy:
     automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
-      limit: 5
-      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+      # generous: the RoleBindings target mas-*-sls/-core namespaces created LATER by the instance
+      # cascade. If this app syncs first, the apply fails until those namespaces exist — keep
+      # retrying (~hours) so it self-heals through a slow cascade instead of giving up.
+      limit: 30
+      backoff: { duration: 5s, factor: 2, maxDuration: 5m }
 {{- else }}
   # Intentionally no automated syncPolicy. Run scripts/sync-runtime-registration.sh
   # after DRO is initialized.

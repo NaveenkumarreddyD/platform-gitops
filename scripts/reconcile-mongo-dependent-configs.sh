@@ -40,17 +40,23 @@ sync_if_exists() {
 }
 
 wait_license_service_ready() {
-  local timeout="${1:-1800}" elapsed=0 status="" initialized="" registration_key=""
+  # NOTE: this SLS CRD version does NOT populate .status.status or .status.initialized (they're
+  # empty), so the old `status == "Ready"` test looped forever even on a healthy LicenseService.
+  # The reliable ready signals are a present registrationKey (SLS registered with IBM) AND the
+  # reconcile not being in Failure. registrationKey lives under .status.registrationInfo on newer
+  # CRDs and .status directly on older ones — read both.
+  local timeout="${1:-1800}" elapsed=0 registration_key="" failure="" succeeded=""
   while :; do
-    status="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.status}' 2>/dev/null || true)"
-    initialized="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.initialized}' 2>/dev/null || true)"
-    registration_key="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
-    if [[ "$status" == "Ready" && ( "$initialized" =~ ^([Tt]rue|[Ii]nitialized|[Rr]eady)$ || -n "$registration_key" ) ]]; then
-      echo ">> LicenseService in $SLS_NS is Ready"
+    registration_key="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.registrationInfo.registrationKey}' 2>/dev/null || true)"
+    [[ -z "$registration_key" ]] && registration_key="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.registrationKey}' 2>/dev/null || true)"
+    failure="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.conditions[?(@.type=="Failure")].status}' 2>/dev/null || true)"
+    succeeded="$(oc get licenseservices.sls.ibm.com -n "$SLS_NS" -o jsonpath='{.items[0].status.conditions[?(@.type=="Successful")].status}' 2>/dev/null || true)"
+    if [[ -n "$registration_key" && "$failure" != "True" ]]; then
+      echo ">> LicenseService in $SLS_NS is Ready (registrationKey present, Failure=${failure:-none}, Successful=${succeeded:-?})"
       return 0
     fi
     if (( elapsed == 0 || elapsed % 60 == 0 )); then
-      echo ">> waiting for LicenseService in $SLS_NS Ready (status=${status:-missing}, initialized=${initialized:-missing}, registrationKey=${registration_key:+present}, elapsed=${elapsed}s)"
+      echo ">> waiting for LicenseService in $SLS_NS Ready (registrationKey=${registration_key:+present}, Failure=${failure:-none}, elapsed=${elapsed}s)"
       oc get licenseservices.sls.ibm.com -n "$SLS_NS" 2>/dev/null || true
     fi
     (( elapsed += 15 ))
