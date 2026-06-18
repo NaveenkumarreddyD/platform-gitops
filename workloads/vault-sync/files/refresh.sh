@@ -11,15 +11,20 @@ set -uo pipefail
 MODE="${1:-${MODE:-}}"
 NS="${ARGO_NS:-openshift-gitops}"
 
-# 1) re-read Vault into the consumer app(s)
-for app in ${REFRESH_APPS:-}; do
-  if oc get application "$app" -n "$NS" >/dev/null 2>&1; then
-    oc annotate application "$app" -n "$NS" argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
-    echo ">> hard-refreshed $app"
-  else
-    echo ">> (consumer app $app not present yet — skipping)"
-  fi
-done
+# 1) re-read Vault into the consumer config app(s). Re-callable: the FIRST refresh can miss the
+#    window (config app not created yet, or AVP cached a "secret not found" before vault-write),
+#    so we also re-issue this inside the retry loop until the config CR actually renders.
+refresh_apps() {
+  for app in ${REFRESH_APPS:-}; do
+    if oc get application "$app" -n "$NS" >/dev/null 2>&1; then
+      oc annotate application "$app" -n "$NS" argocd.argoproj.io/refresh=hard --overwrite >/dev/null 2>&1 || true
+      echo ">> hard-refreshed $app"
+    else
+      echo ">> (consumer app $app not present yet — will retry)"
+    fi
+  done
+}
+refresh_apps
 
 # 2) bounce the controllers that cache TLS/registration, retrying until the consumer
 #    config CR reports good (or attempts exhausted). All best-effort.
@@ -58,6 +63,7 @@ for n in $(seq 1 "$ATTEMPTS"); do
   # bouncing a healthy one. dro: the goal is the downstream milestone consumers (bascfg is already
   # Ready while milestone still 401s), so ALWAYS bounce at least once to refresh their token.
   if [ "$MODE" != dro ] && consumer_ready; then echo ">> $MODE consumer already Ready (no bounce needed)"; break; fi
+  refresh_apps   # re-issue the hard-refresh each attempt — clears a render that cached "secret not found"
   [ -n "${BOUNCE_CORE_PODS:-}" ] && bounce "${CORE_NS:-}" ${BOUNCE_CORE_PODS}
   [ -n "${BOUNCE_SLS_PODS:-}" ]  && bounce "${SLS_NS:-}"  ${BOUNCE_SLS_PODS}
   echo ">> bounce $n/$ATTEMPTS (mode=$MODE); waiting up to ${WAIT}s for consumer Ready"
