@@ -36,7 +36,7 @@ spec:
             manage:
               enabled: {{ .Values.masCerts.manage }}
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
+    automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
       limit: 5
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }

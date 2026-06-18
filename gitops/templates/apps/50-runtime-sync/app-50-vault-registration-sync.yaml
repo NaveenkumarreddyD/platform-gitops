@@ -37,7 +37,7 @@ spec:
         mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
 {{- if .Values.registrationSync.autoSync }}
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
+    automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
       limit: 5
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }
@@ -83,7 +83,7 @@ spec:
         mongoSync: { enabled: false, namespace: {{ include "gitops.mongoNs" . }} }
 {{- if .Values.registrationSync.autoSync }}
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
+    automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
       limit: 5
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }

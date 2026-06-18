@@ -51,6 +51,11 @@ mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: community
 # (verify the tag: skopeo list-tags docker://quay.io/ibmmas/mongo | grep 7.0)
 mongoImage: { repo: "quay.io/ibmmas", name: "mongo", imageType: "ubi8-20250817T080412Z" }
 
+# Account-level auto-delete (official value name + default). Per IBM gitops orchestration.md:
+# prune:true is for dev; "too risky for production" -> false. When false, ArgoCD won't auto-prune
+# resources/apps when their config files are deleted; deletions require an explicit pruning sync.
+auto_delete: false
+
 # which Applications to emit
 enable:
   vault: true

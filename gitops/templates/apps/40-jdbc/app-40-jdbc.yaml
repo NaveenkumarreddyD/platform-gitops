@@ -41,7 +41,7 @@ spec:
     # tries to apply the JdbcCfg before its CRD exists. selfHeal retries until ready.
     automated:
       selfHeal: true
-      prune: true
+      prune: {{ .Values.auto_delete }}
     {{- end }}
     syncOptions:
       - CreateNamespace=true

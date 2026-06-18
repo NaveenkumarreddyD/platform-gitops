@@ -34,7 +34,7 @@ spec:
             adminPasswordPath: "<path:{{ include "gitops.path" . }}/mongo#password>"
             slsmongoPasswordPath: "<path:{{ include "gitops.path" . }}/sls-mongo#password>"
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
+    automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
       limit: 5
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }

@@ -35,7 +35,7 @@ spec:
         droSync: { enabled: false, namespace: {{ .Values.dro.namespace }} }
         mongoSync: { enabled: true, namespace: {{ include "gitops.mongoNs" . }} }
   syncPolicy:
-    automated: { prune: true, selfHeal: true }
+    automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:
       limit: 5
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }
