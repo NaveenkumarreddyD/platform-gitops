@@ -33,6 +33,10 @@ spec:
             adminUser: {{ .Values.mongo.adminUser }}
             adminPasswordPath: "<path:{{ include "gitops.path" . }}/mongo#password>"
             slsmongoPasswordPath: "<path:{{ include "gitops.path" . }}/sls-mongo#password>"
+            # PINNED CA (generated once by load-secrets.sh) -> cert-manager ca-issuer signs the server
+            # cert with it; mongocfg trusts the same CA. Fixed forever => mongocfg never CA-mismatches.
+            mongoCaCert: "<path:{{ include "gitops.path" . }}/mongo-ca#tls_crt_b64>"
+            mongoCaKey: "<path:{{ include "gitops.path" . }}/mongo-ca#tls_key_b64>"
   syncPolicy:
     automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:

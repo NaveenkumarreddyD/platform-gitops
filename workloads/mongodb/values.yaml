@@ -20,3 +20,8 @@ slsmongoUser: slsmongo
 createSccBinding: false          # platform root owns this before the operator app starts
 adminPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/mongo#password>"
 slsmongoPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/sls-mongo#password>"
+# PINNED Mongo CA (base64 PEM), generated once by load-secrets.sh into Vault $IP/mongo-ca.
+# app-25 overrides these with the live <path:...> refs; cert-manager ca-issuer signs the server cert
+# with this CA and mongocfg trusts the same one -> the CA never rotates -> mongocfg never CA-mismatches.
+mongoCaCert: "<path:secret/data/mas/drroc4/drgitopsapp/mongo-ca#tls_crt_b64>"
+mongoCaKey: "<path:secret/data/mas/drroc4/drgitopsapp/mongo-ca#tls_key_b64>"
