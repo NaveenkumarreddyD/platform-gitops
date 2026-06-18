@@ -5,7 +5,9 @@
 {{- $c := $root.Values.clusterId -}}
 {{- $i := $root.Values.instanceId -}}
 {{- $apps := "" -}}
-{{- if eq $mode "sls" }}{{- $apps = printf "suite.%s.%s" $c $i -}}{{- end -}}
+{{/* refresh the CONFIG app that actually consumes the Vault secret (where AVP renders the *Cfg),
+     not just the suite — otherwise the config app keeps its cached "secret not found" render. */}}
+{{- if eq $mode "sls" }}{{- $apps = printf "%s-sls-system.%s suite.%s.%s" $i $c $c $i -}}{{- end -}}
 {{- if eq $mode "dro" }}{{- $apps = printf "%s-bas-system.%s" $i $c -}}{{- end -}}
 {{- if eq $mode "mongo" }}{{- $apps = printf "%s-mongo-system.%s sls.%s.%s" $i $c $c $i -}}{{- end -}}
 {{/* controllers that cache TLS/registration and must be bounced after harvest (the retrofit) */}}
