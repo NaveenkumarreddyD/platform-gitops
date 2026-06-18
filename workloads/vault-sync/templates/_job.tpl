@@ -8,6 +8,12 @@
 {{- if eq $mode "sls" }}{{- $apps = printf "suite.%s.%s" $c $i -}}{{- end -}}
 {{- if eq $mode "dro" }}{{- $apps = printf "%s-bas-system.%s" $i $c -}}{{- end -}}
 {{- if eq $mode "mongo" }}{{- $apps = printf "%s-mongo-system.%s sls.%s.%s" $i $c $c $i -}}{{- end -}}
+{{/* controllers that cache TLS/registration and must be bounced after harvest (the retrofit) */}}
+{{- $bounceCore := "" -}}
+{{- $bounceSls := "" -}}
+{{- if eq $mode "sls" }}{{- $bounceCore = "entitymgr-slscfg entitymgr-suite" -}}{{- $bounceSls = "ibm-sls-controller-manager" -}}{{- end -}}
+{{- if eq $mode "dro" }}{{- $bounceCore = "entitymgr-bascfg milestonesapi adoptionusageapi" -}}{{- end -}}
+{{- if eq $mode "mongo" }}{{- $bounceCore = "entitymgr-mongocfg entitymgr-suite" -}}{{- end -}}
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -74,10 +80,18 @@ spec:
       containers:
         - name: refresh
           image: {{ $root.Values.ocImage }}
-          command: ["/bin/bash","/scripts/refresh.sh"]
+          command: ["/bin/bash","/scripts/refresh.sh","{{ $mode }}"]
           env:
             - {name: ARGO_NS, value: "{{ $root.Values.namespace }}"}
             - {name: REFRESH_APPS, value: "{{ $apps }}"}
+            - {name: MODE, value: "{{ $mode }}"}
+            - {name: INSTANCE_ID, value: "{{ $i }}"}
+            - {name: CORE_NS, value: "mas-{{ $i }}-core"}
+            - {name: SLS_NS, value: "{{ $slsNs }}"}
+            - {name: BOUNCE_CORE_PODS, value: "{{ $bounceCore }}"}
+            - {name: BOUNCE_SLS_PODS, value: "{{ $bounceSls }}"}
+            - {name: BOUNCE_ATTEMPTS, value: "{{ $root.Values.bounceAttempts | default 4 }}"}
+            - {name: BOUNCE_WAIT, value: "{{ $root.Values.bounceWait | default 240 }}"}
           volumeMounts: [{name: scripts, mountPath: /scripts}]
           securityContext: *sc
           resources: *res

@@ -120,7 +120,23 @@ oc get po -n mas-drgitopsapp-manage     # ui/cron/mea/report/jms bundles Running
 
 ---
 
-## If a `*Cfg` is stuck (the manual recovery — harvest, THEN bounce)
+## Self-orchestration (no manual harvest/bounce in a normal deploy)
+
+The `vault-sync-{sls,dro,mongo}` Applications are in-cluster ArgoCD **PostSync hook Jobs** that run
+automatically during reconcile. Each Job: (1) **harvests** the runtime registration/CA into Vault,
+(2) hard-**refreshes** the consuming config app so AVP re-renders the CR, and (3) **bounces** the MAS
+controllers that cache their TLS/registration context, retrying until the config CR reports Ready:
+
+| Job | harvests | bounces (auto) | fixes |
+|-----|----------|----------------|-------|
+| vault-sync-sls | SLS url/key/CA → `…/sls` | `entitymgr-slscfg`, `entitymgr-suite`, `ibm-sls-controller-manager` | SLS registration / `SLSIntegrationReady` |
+| vault-sync-dro | DRO token/CA → `…/dro` | `entitymgr-bascfg`, `milestonesapi`, `adoptionusageapi` | BAS + the Manage **milestone 401** |
+| vault-sync-mongo | live Mongo CA → `…/mongo` | `entitymgr-mongocfg`, `entitymgr-suite` | `SystemDatabaseReady` |
+
+So a clean deploy is just **Phase 1 → 4**; the harvest+bounce that used to be manual now happens
+inside the cluster. The scripts below remain only as a **fallback** if you ever need to force it.
+
+## Manual fallback — harvest, THEN bounce
 
 `reconcile` alone bounces controllers against whatever is in Vault. If the Vault registration path
 is empty, registration fails forever. Always harvest first.

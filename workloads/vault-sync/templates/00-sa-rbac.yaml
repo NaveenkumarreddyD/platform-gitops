@@ -25,6 +25,14 @@ rules:
   - apiGroups: ["mongodbcommunity.mongodb.com"]
     resources: ["mongodbcommunity"]
     verbs: ["get","list"]
+  # bounce the MAS controllers that cache TLS/registration (refresh.sh, the retrofit)
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get","list","delete"]
+  # read consumer config CR status to bounce only until Ready (no over-bouncing)
+  - apiGroups: ["config.mas.ibm.com"]
+    resources: ["slscfgs","bascfgs","mongocfgs"]
+    verbs: ["get","list"]
 {{- end }}
 {{- if .Values.slsSync.enabled }}
 ---
@@ -68,6 +76,25 @@ kind: RoleBinding
 metadata:
   name: {{ .Values.serviceAccount }}-mongo
   namespace: {{ .Values.mongoSync.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ .Values.serviceAccount }}-reader
+subjects:
+  - kind: ServiceAccount
+    name: {{ .Values.serviceAccount }}
+    namespace: {{ .Values.namespace }}
+{{- end }}
+{{- $bmode := "" }}{{- if .Values.slsSync.enabled }}{{ $bmode = "sls" }}{{- end }}{{- if .Values.droSync.enabled }}{{ $bmode = "dro" }}{{- end }}{{- if .Values.mongoSync.enabled }}{{ $bmode = "mongo" }}{{- end }}
+{{- if $bmode }}
+---
+# allow refresh.sh to bounce cached MAS controllers + read cfg status in the instance core ns.
+# Named per-mode so the sls/dro/mongo Apps don't fight over one shared RoleBinding.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: {{ .Values.serviceAccount }}-corebounce-{{ $bmode }}
+  namespace: mas-{{ .Values.instanceId }}-core
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
