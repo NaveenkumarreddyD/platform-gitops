@@ -1,10 +1,15 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # FAST + clean teardown of ONE platform-gitops cluster/instance.
-# Pauses Argo CD, force-deletes the cluster's apps/appsets, deletes the target namespaces in
-# parallel, strips finalizers ONLY on the known MAS/operator CRs, then force-finalizes any
-# straggler namespace via the /finalize API (removes it + everything in it instantly). Restores
-# Argo controllers on exit.
+# Order matters so NOTHING survives or gets recreated:
+#   1. pause Argo CD DURABLY (scale + ArgoCD CR replicas=0, since the operator re-pins scale)
+#   2. force-delete the cluster's apps/appsets (so nothing regenerates)
+#   3. purge OLM operators in the target namespaces (subscriptions->installplans->CSVs->operatorgroups)
+#      — this is what prevents stale operators (e.g. ibm-metrics-operator) lingering and wedging
+#      OLM resolution on the NEXT install with an "@existing ... constraints not satisfiable" error
+#   4. strip MAS/operator CR finalizers, delete namespaces, force-finalize stragglers
+#   5. clean cluster-scoped leftovers
+# Restores Argo controllers on exit.
 #
 # Usage:
 #   ./scripts/delete-fast.sh [--confirm] [--include-vault] <cluster.env | cluster-name>
@@ -56,8 +61,12 @@ fi
 say(){ printf '\n=== %s ===\n' "$*"; }
 
 # Restore Argo controllers on exit no matter what.
-SCALE_FILE="$(mktemp)"
+SCALE_FILE="$(mktemp)"; ARGOCD_CR=""
 cleanup(){
+  if [[ -n "$ARGOCD_CR" ]]; then
+    oc patch "$ARGOCD_CR" -n "$ARGO_NS" --type=merge \
+      -p '{"spec":{"controller":{"replicas":1},"applicationSet":{"replicas":1}}}' >/dev/null 2>&1 || true
+  fi
   if [[ -s "$SCALE_FILE" ]]; then
     say "Restoring Argo CD controllers"
     while read -r k n r; do [[ -n "$k" ]] && oc scale "$k/$n" -n "$ARGO_NS" --replicas="${r:-1}" >/dev/null 2>&1 || true; done < "$SCALE_FILE"
@@ -66,7 +75,7 @@ cleanup(){
 }
 trap cleanup EXIT
 
-say "1. Pause Argo CD controllers (so nothing recreates during teardown)"
+say "1. Pause Argo CD controllers DURABLY (so nothing recreates during teardown)"
 oc get deploy,statefulset -n "$ARGO_NS" \
   -o jsonpath='{range .items[*]}{.kind}{" "}{.metadata.name}{" "}{.spec.replicas}{"\n"}{end}' 2>/dev/null \
   | while read -r k n r; do
@@ -76,6 +85,14 @@ oc get deploy,statefulset -n "$ARGO_NS" \
           oc scale "${k,,}/$n" -n "$ARGO_NS" --replicas=0 >/dev/null 2>&1 || true ;;
       esac
     done
+# The OpenShift GitOps operator re-pins the controller replicas, so `oc scale` alone is reverted
+# within seconds. Set replicas=0 on the ArgoCD CR too (the operator honors this); restored on exit.
+ARGOCD_CR="$(oc get argocd -n "$ARGO_NS" -o name 2>/dev/null | head -1)"
+if [[ -n "$ARGOCD_CR" ]]; then
+  oc patch "$ARGOCD_CR" -n "$ARGO_NS" --type=merge \
+    -p '{"spec":{"controller":{"replicas":0},"applicationSet":{"replicas":0}}}' >/dev/null 2>&1 || true
+  echo "  paused $ARGOCD_CR (controller + applicationSet replicas=0)"
+fi
 
 say "2. Force-delete this cluster's Argo apps + appsets"
 for kind in applications applicationsets; do
@@ -88,6 +105,21 @@ for kind in applications applicationsets; do
         oc delete "$kind" "$a" -n "$ARGO_NS" --ignore-not-found --wait=false >/dev/null 2>&1 || true
         echo "  deleted $kind/$a"
       done
+done
+
+say "2b. Purge OLM operators in target namespaces BEFORE deleting the namespaces"
+# Delete in OLM-safe order: Subscription first (so OLM stops managing/reinstalling), then the
+# pending InstallPlans, then the CSVs (the actual operator), then the OperatorGroup. Doing this
+# before the namespace delete guarantees no operator lingers/gets reinstalled — which is what
+# caused the stale ibm-metrics-operator "@existing" OLM resolution conflict on reinstall.
+# Scoped to the MAS-owned namespaces only; openshift-marketplace platform operators are untouched.
+for ns in "${NS_LIST[@]}"; do
+  oc get ns "$ns" >/dev/null 2>&1 || continue
+  for kind in subscriptions.operators.coreos.com installplans.operators.coreos.com \
+              clusterserviceversions.operators.coreos.com operatorgroups.operators.coreos.com; do
+    oc delete "$kind" --all -n "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  done
+  echo "  purged OLM artifacts in $ns"
 done
 
 say "3. Strip MAS/operator CR finalizers + delete namespaces (parallel)"
@@ -135,5 +167,9 @@ oc delete clusterrolebinding "${INSTANCE_ID}-jdbc-system-await-crd" --ignore-not
 say "6. Verify"
 echo "Argo apps for cluster:"; oc get applications -n "$ARGO_NS" 2>/dev/null | grep -E "${CLUSTER_ID}|${INSTANCE_ID}" || echo "  none"
 echo "Namespaces:"; oc get ns 2>/dev/null | grep -E "mas-${INSTANCE_ID}|${MONGO_NS}|^${DRO_NAMESPACE}\b$( [[ $INCLUDE_VAULT == 1 ]] && echo '|^vault\b' )" || echo "  none"
+echo "Operator residue (CSVs/subscriptions in MAS/DRO ns — should be gone with the namespaces):"
+oc get csv,subscription -A 2>/dev/null \
+  | grep -E "$(printf '%s|' "${NS_LIST[@]}" | sed 's/|$//')" \
+  | grep -iE 'mas|sls|mongo|truststore|data-reporter|metric|db2' || echo "  none"
 echo ""
 echo "Fast delete complete (cluster=$CLUSTER_ID instance=$INSTANCE_ID, vault=$([[ $INCLUDE_VAULT == 1 ]] && echo deleted || echo preserved))."
