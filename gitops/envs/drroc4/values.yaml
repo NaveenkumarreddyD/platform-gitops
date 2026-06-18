@@ -10,3 +10,11 @@ sls:   { syncEnabled: true }
 enable:
   grafana: false
   masCerts: true
+# The official suite chart now renders <instance>-cert-public itself (we feed it the cert via
+# ibm-mas-suite.yaml.tpl tls_cert/tls_key/ca_cert). So we MUST stop the mas-certs app from ALSO
+# rendering that core secret — two owners of one secret = perpetual OutOfSync/selfHeal that re-rolled
+# coreapi/internalapi every few minutes. We keep manage:true because the manage cert
+# (<instance>-<workspace>-cert-public-81) has no other owner.
+masCerts:
+  core: false
+  manage: true
