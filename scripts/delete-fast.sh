@@ -17,12 +17,13 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"
 
-usage(){ sed -n '3,12p' "$0"; }
-CONFIRM=0; INCLUDE_VAULT=0; ENVARG=""
+usage(){ sed -n '3,16p' "$0"; }
+CONFIRM=0; INCLUDE_VAULT=0; ALL_MAS=0; ENVARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRM=1; shift ;;
     --include-vault) INCLUDE_VAULT=1; shift ;;
+    --all-mas) ALL_MAS=1; shift ;;   # nuke EVERY MAS instance + ibm-sls (discovered), not just this one
     -h|--help) usage; exit 0 ;;
     -*) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
     *) ENVARG="$1"; shift ;;
@@ -48,6 +49,13 @@ MONGO_NS="${MONGO_NS:-mongo-${INSTANCE_ID}}"; DRO_NAMESPACE="${DRO_NAMESPACE:-ib
 NS_LIST=( "mas-${INSTANCE_ID}-core" "mas-${INSTANCE_ID}-manage" "mas-${INSTANCE_ID}-sls" \
           "mas-${INSTANCE_ID}-syncres" "$MONGO_NS" "$DRO_NAMESPACE" )
 [[ "$INCLUDE_VAULT" == 1 ]] && NS_LIST+=( vault )
+# --all-mas: discover EVERY MAS-related namespace (all instances + shared ibm-sls), so a leftover
+# instance's stale operators can't survive to wedge OLM on the next install. Dedupe.
+if [[ "$ALL_MAS" == 1 ]]; then
+  while read -r n; do [[ -n "$n" ]] && NS_LIST+=( "$n" ); done \
+    < <(oc get ns -o name 2>/dev/null | sed 's#namespace/##' | grep -iE '^mas-|^mongo-|^ibm-sls$|^ibm-software-central$')
+  mapfile -t NS_LIST < <(printf '%s\n' "${NS_LIST[@]}" | awk 'NF' | sort -u)
+fi
 
 if [[ "$CONFIRM" != 1 ]]; then
   echo "DRY RUN — nothing deleted. Would fast-delete:"
@@ -117,6 +125,11 @@ for ns in "${NS_LIST[@]}"; do
   oc get ns "$ns" >/dev/null 2>&1 || continue
   for kind in subscriptions.operators.coreos.com installplans.operators.coreos.com \
               clusterserviceversions.operators.coreos.com operatorgroups.operators.coreos.com; do
+    # strip finalizers FIRST — a Failed CSV keeps its finalizer, so a plain delete + later
+    # namespace force-finalize would ORPHAN it (lingers in etcd, wedges OLM on reinstall).
+    oc get "$kind" -n "$ns" -o name 2>/dev/null | while read -r o; do
+      oc patch "$o" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    done
     oc delete "$kind" --all -n "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
   done
   echo "  purged OLM artifacts in $ns"
@@ -138,6 +151,11 @@ for ns in "${NS_LIST[@]}"; do
         [[ -n "$o" ]] && oc patch "$o" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
       done || true
     done
+    # PVCs carry a kubernetes.io/pvc-protection finalizer that blocks namespace termination
+    # until their pods release them — strip it so the namespace drains cleanly.
+    oc get pvc -n "$ns" -o name 2>/dev/null | while read -r p; do
+      oc patch "$p" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    done || true
     oc delete ns "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
     echo "  deleting namespace/$ns"
   ) &
@@ -157,6 +175,23 @@ for _ in $(seq 1 18); do
   done
   [[ "$remaining" == 0 ]] && break
   sleep 5
+done
+
+say "4b. Sweep any ORPHANED MAS operator CSVs/subs (namespace force-finalized out from under them)"
+# Safety net: if a CSV still references a now-deleted namespace, recreate the ns, strip finalizers,
+# delete the objects, then re-delete the ns. Without a live namespace the finalizer strip can't land.
+for ns in $(oc get csv -A -o custom-columns='NS:.metadata.namespace' --no-headers 2>/dev/null \
+              | grep -iE '^mas-|^mongo-|^ibm-sls$|^ibm-software-central$' | sort -u); do
+  oc get ns "$ns" >/dev/null 2>&1 || oc create namespace "$ns" >/dev/null 2>&1 || true
+  for o in $(oc get csv,subscription,installplan,operatorgroup -n "$ns" -o name 2>/dev/null); do
+    oc patch "$o" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+  done
+  oc delete csv,subscription,installplan,operatorgroup --all -n "$ns" --ignore-not-found >/dev/null 2>&1 || true
+  oc delete ns "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+  oc get ns "$ns" -o json 2>/dev/null \
+    | python3 -c 'import sys,json; d=json.load(sys.stdin); d.get("spec",{}).pop("finalizers",None); sys.stdout.write(json.dumps(d))' 2>/dev/null \
+    | oc replace --raw "/api/v1/namespaces/${ns}/finalize" -f - >/dev/null 2>&1 || true
+  echo "  swept orphaned OLM objects in $ns"
 done
 
 say "5. Clean cluster-scoped leftovers we created"
