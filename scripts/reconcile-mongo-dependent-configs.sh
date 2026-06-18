@@ -150,4 +150,30 @@ elif oc get suite "$INSTANCE_ID" -n "$CORE_NS" >/dev/null 2>&1; then
   fi
 fi
 
+# The Manage user/group sync agents (and ibm-truststore-mgr, which builds their truststore) live in
+# the MANAGE namespace and ALSO verify Mongo TLS. They are NOT touched by the core-ns steps above, so
+# after a Mongo CA refresh they keep a stale CA and CrashLoopBackOff with CERTIFICATE_VERIFY_FAILED
+# ("ServerSelectionTimeoutError ... certificate verify failed"). Bounce them here so the refreshed CA
+# reaches EVERY consumer. Only when they're unhealthy (no churn on healthy runs); skipped until Manage
+# is deployed. This closes the gap where mongocfg/suite recover but the sync agents stay crashed.
+MANAGE_NS="mas-${INSTANCE_ID}-manage"
+if oc get ns "$MANAGE_NS" >/dev/null 2>&1; then
+  unhealthy=0
+  for sa in usersyncagent groupsyncagent; do
+    pod="$(oc get pod -n "$MANAGE_NS" --no-headers 2>/dev/null | awk -v p="$sa" '$1 ~ p {print $1; exit}')"
+    [[ -z "$pod" ]] && continue
+    ready="$(oc get pod "$pod" -n "$MANAGE_NS" -o jsonpath='{.status.containerStatuses[0].ready}' 2>/dev/null || true)"
+    [[ "$ready" == "true" ]] || unhealthy=1
+  done
+  if [[ "$unhealthy" == 1 ]]; then
+    echo ">> Manage sync agents not Ready -> refreshing Manage-ns Mongo-CA consumers"
+    delete_first_pod_matching "$MANAGE_NS" 'ibm-truststore-mgr'   # re-aggregate the Manage truststore
+    delete_first_pod_matching "$MANAGE_NS" 'usersyncagent'
+    delete_first_pod_matching "$MANAGE_NS" 'groupsyncagent'
+    echo ">> bounced Manage truststore-mgr + sync agents; they will re-read the current Mongo CA"
+  else
+    echo ">> Manage sync agents healthy (or not present yet); no Mongo-CA bounce needed."
+  fi
+fi
+
 echo ">> Mongo-dependent MAS config reconciliation completed."
