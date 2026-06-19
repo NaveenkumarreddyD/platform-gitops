@@ -11,9 +11,14 @@ metadata:
   name: "{{ .Values.resource }}-ca"
   namespace: "{{ .Values.namespace }}"
   annotations:
-    # never let ArgoCD prune/replace the pinned CA secret out from under cert-manager + Mongo
+    # Prune=false: never let ArgoCD DELETE this CA out from under cert-manager + Mongo.
+    # NOTE: we intentionally do NOT set `helm.sh/resource-policy: keep` here. `keep` froze the
+    # live secret at whatever CA it was first created with, so if it ever held a non-pin CA the
+    # server cert got signed by a stale CA while consumers trusted the pin -> permanent
+    # CERTIFICATE_VERIFY_FAILED, and the load-secrets(pin) vs vault-sync(live) writers oscillated.
+    # Without `keep`, ArgoCD continuously reconciles this secret to the pinned Vault CA, so the
+    # live signing CA == pin == consumer trust, always. The pin is the single source of truth.
     argocd.argoproj.io/sync-options: Prune=false
-    helm.sh/resource-policy: keep
 data:
   tls.crt: {{ .Values.mongoCaCert }}
   tls.key: {{ .Values.mongoCaKey }}

@@ -1,7 +1,18 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# ============================ BREAK-GLASS ONLY — DO NOT RUN ROUTINELY ============================
+# The Mongo CA is PINNED in Vault ($IP/mongo-ca) and is the SINGLE source of truth. load-secrets.sh
+# writes it to mongo#ca.crt, cert-manager signs the server cert with it (workloads/mongodb/00-ca.yaml,
+# now WITHOUT helm.sh/resource-policy:keep so the live CA always reconciles to the pin), and all
+# consumers (MongoCfg/Manage/SLS) trust the SAME mongo#ca.crt. Nothing needs harvesting.
+#
+# This script harvests the LIVE cert-manager CA and overwrites the consumer keys — i.e. it reconciles
+# in the OPPOSITE direction to the pin. Running it routinely is what made the CA oscillate and SLS go
+# CERTIFICATE_VERIFY_FAILED. Use it ONLY as last-resort recovery if the pin in Vault was lost and you
+# must adopt whatever CA the cluster currently has. Otherwise re-assert the pin (load-secrets.sh).
+# ================================================================================================
 # Copy the DEDICATED Mongo's cert-manager CA into Vault (mongo#ca.crt AND sls-mongo#ca.crt), then
-# hard-refresh the consuming apps. Run ONCE after the dedicated Mongo is Ready, and after any CA rotation.
+# hard-refresh the consuming apps.
 #   ./sync-mongo-ca.sh <cluster.env>
 ENVFILE="${1:?usage: sync-mongo-ca.sh <cluster.env>}"
 # shellcheck disable=SC1090
