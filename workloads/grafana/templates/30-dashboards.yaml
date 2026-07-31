@@ -1,0 +1,16 @@
+{{- range .Values.dashboards }}
+apiVersion: grafana.integreatly.org/v1beta1
+kind: GrafanaDashboard
+metadata:
+  name: {{ .name }}
+  namespace: {{ include "grafana.ns" $ }}
+spec:
+  instanceSelector: { matchLabels: { dashboards: grafana } }
+  resyncPeriod: 30m
+{{- if .url }}
+  url: {{ .url | quote }}
+{{- else if .gnetId }}
+  grafanaCom: { id: {{ .gnetId }} }
+{{- end }}
+---
+{{- end }}

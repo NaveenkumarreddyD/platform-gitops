@@ -1,0 +1,18 @@
+{{- /* One Subscription per operator, in the operator's own namespace. */ -}}
+{{- range .Values.operators }}
+apiVersion: operators.coreos.com/v1alpha1
+kind: Subscription
+metadata:
+  name: {{ .name }}
+  namespace: {{ .namespace }}
+spec:
+  name: {{ .package }}
+  channel: {{ .channel }}
+  source: {{ .source }}
+  sourceNamespace: {{ .sourceNamespace }}
+  installPlanApproval: {{ .installPlanApproval | default "Automatic" }}
+{{- if .startingCSV }}
+  startingCSV: {{ .startingCSV }}
+{{- end }}
+---
+{{- end }}

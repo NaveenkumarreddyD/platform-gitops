@@ -1,0 +1,45 @@
+# Dedicated MongoDB instance for MAS (independent component: ./bootstrap/20-mongodb.sh <env>).
+{{- if has .Values.component (list "mongodb" "all") }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mongodb
+  namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform, mas.ibm.com/component: mongodb }
+  annotations: { argocd.argoproj.io/sync-wave: "25" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  revisionHistoryLimit: 10
+  project: {{ .Values.project }}
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ include "gitops.mongoNs" . }}
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/mongodb
+    plugin:
+      name: argocd-vault-plugin-helm
+      env:
+        - name: HELM_VALUES
+          value: |
+            namespace: {{ include "gitops.mongoNs" . }}
+            resource: {{ .Values.instanceId }}-mongo
+            members: {{ .Values.mongo.members }}
+            mongodbVersion: "{{ .Values.mongo.version }}"
+            mongodbImage: "{{ .Values.mongoImage.repo }}/{{ .Values.mongoImage.name }}:{{ .Values.mongo.version }}-{{ .Values.mongoImage.imageType }}"
+            storageClass: {{ .Values.storageClass }}
+            adminUser: {{ .Values.mongo.adminUser }}
+            adminPasswordPath: "<path:{{ include "gitops.path" . }}/mongo#password>"
+            slsmongoPasswordPath: "<path:{{ include "gitops.path" . }}/sls-mongo#password>"
+            # The manually seeded CA signs MongoDB and is also trusted by MAS/SLS.
+            mongoCaCert: "<path:{{ include "gitops.path" . }}/mongo-ca#tls_crt_b64>"
+            mongoCaKey: "<path:{{ include "gitops.path" . }}/mongo-ca#tls_key_b64>"
+  syncPolicy:
+    automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+    syncOptions: [ "CreateNamespace=true" ]
+{{- end }}

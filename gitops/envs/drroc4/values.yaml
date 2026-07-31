@@ -1,0 +1,4 @@
+instanceId: drgitopsapp
+mongo: { namespace: mongo-gitops, members: 3, version: "7.0.23" }
+enable:
+  grafana: false

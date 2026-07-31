@@ -1,0 +1,11 @@
+{{- /* One namespace per operator. Distinct namespaces per operator (cert-manager-operator,
+       platform-operators, ...), so no dedup needed. */ -}}
+{{- range .Values.operators }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .namespace }}
+  labels:
+    app.kubernetes.io/part-of: mas-platform
+---
+{{- end }}

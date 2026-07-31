@@ -1,0 +1,8 @@
+namespace: grafana
+grafanaVersion: "10.4.3"
+adminUser: root
+# Thanos Querier (OpenShift cluster monitoring). Needs user-workload-monitoring enabled.
+thanosUrl: https://thanos-querier.openshift-monitoring.svc.cluster.local:9091
+# MAS dashboards — drop your mas-grafana-monitoring dashboards here (url, gnetId, or inline json)
+dashboards:
+  - { name: mas-manage, gnetId: 0, url: "" }   # set url to your exported MAS Manage dashboard JSON

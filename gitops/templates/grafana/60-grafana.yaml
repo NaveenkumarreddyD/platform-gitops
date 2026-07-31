@@ -1,0 +1,31 @@
+# Optional Grafana instance, Thanos datasource, and dashboards.
+{{- if and .Values.enable.grafana (has .Values.component (list "grafana" "all")) }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: grafana
+  namespace: {{ .Values.argoNamespace }}
+  labels:
+    app.kubernetes.io/part-of: mas-platform
+    mas.ibm.com/component: grafana
+    mas.ibm.com/manual-gate: grafana-crds
+  annotations:
+    argocd.argoproj.io/sync-wave: "60"
+    mas.ibm.com/manual-sync-reason: "Sync after the pinned Grafana operator InstallPlan is approved and CRDs exist"
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  revisionHistoryLimit: 10
+  project: {{ .Values.project }}
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.grafana.namespace }}
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/grafana
+  syncPolicy:
+    syncOptions: [ "CreateNamespace=true" ]
+  # Intentionally manual: approve the pinned operator InstallPlan and wait for
+  # grafana.integreatly.org CRDs before syncing this application.
+{{- end }}

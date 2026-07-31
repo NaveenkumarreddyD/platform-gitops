@@ -1,0 +1,15 @@
+# Reusable OLM operator installer: renders Namespace + OperatorGroup + Subscription per entry.
+# The list is supplied by the consuming Argo CD Application (the 'operators' component passes
+# cert-manager + optionally grafana-operator). Default empty so nothing installs on its own.
+#
+# Each entry:
+#   name:               Subscription name
+#   package:            OLM package (spec.name)
+#   channel:            subscription channel
+#   source:             CatalogSource (e.g. redhat-operators, community-operators)
+#   sourceNamespace:    usually openshift-marketplace
+#   namespace:          the operator's install namespace (created here, with its own OperatorGroup)
+#   ogAllNamespaces:    true = watch all namespaces; false = OwnNamespace
+#   installPlanApproval: Automatic | Manual   (default Automatic)
+#   startingCSV:        optional CSV pin
+operators: []

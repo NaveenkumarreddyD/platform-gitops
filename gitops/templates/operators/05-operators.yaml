@@ -1,0 +1,40 @@
+# OLM operators (independent component: ./bootstrap/05-operators.sh <env>).
+# Renders the reusable workloads/operators chart with the platform operator list: cert-manager
+# always (MongoDB + MAS both need it), plus grafana-operator when enable.grafana is true.
+# Deployed EARLY (wave 5) — before MongoDB (which needs cert-manager's Issuer/Certificate CRDs).
+{{- if has .Values.component (list "operators" "all") }}
+{{- $ops := list }}
+{{- if .Values.enable.certManager }}{{ $ops = append $ops .Values.certManagerOperator }}{{- end }}
+{{- if .Values.enable.grafana }}{{ $ops = append $ops .Values.grafanaOperator }}{{- end }}
+{{- if $ops }}
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: operators
+  namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform, mas.ibm.com/component: operators }
+  annotations: { argocd.argoproj.io/sync-wave: "5" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  revisionHistoryLimit: 10
+  project: {{ .Values.project }}
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ .Values.argoNamespace }}
+  source:
+    repoURL: {{ .Values.platform.repo_url | quote }}
+    targetRevision: {{ .Values.platform.revision | quote }}
+    path: workloads/operators
+    helm:
+      values: |
+        operators:
+{{ $ops | toYaml | indent 10 }}
+  syncPolicy:
+    automated: { prune: false, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+    syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]
+{{- end }}
+{{- end }}

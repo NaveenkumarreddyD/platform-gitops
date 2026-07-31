@@ -1,0 +1,19 @@
+{{- /* One OperatorGroup per operator, in the operator's own namespace.
+       ogAllNamespaces=true -> empty selector (watches all namespaces, e.g. grafana-operator).
+       ogAllNamespaces=false -> OwnNamespace (targetNamespaces=[its ns], e.g. cert-manager,
+       whose operator manages cert-manager cluster-wide by itself). */ -}}
+{{- range .Values.operators }}
+apiVersion: operators.coreos.com/v1
+kind: OperatorGroup
+metadata:
+  name: {{ .namespace }}-og
+  namespace: {{ .namespace }}
+spec:
+{{- if .ogAllNamespaces }}
+  {}
+{{- else }}
+  targetNamespaces:
+    - {{ .namespace }}
+{{- end }}
+---
+{{- end }}

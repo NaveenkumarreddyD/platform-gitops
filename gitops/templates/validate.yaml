@@ -1,0 +1,35 @@
+{{- /*
+Render-time guards. These fail the Helm render with a clear message instead of
+letting a bad value pass and fail LATE at Argo CD sync time (a broken Vault path,
+a stock IBM source, etc.). Rendered on every component render.
+*/ -}}
+
+{{- /* 1. component must be a known value. Set by the bootstrap scripts (--set component=…). */ -}}
+{{- $validComponents := list "operators" "vault" "mongodb" "mas" "grafana" "all" -}}
+{{- if not (has .Values.component $validComponents) -}}
+{{- fail (printf "component is '%v' — must be one of: operators, vault, mongodb, mas, grafana, all" .Values.component) -}}
+{{- end -}}
+
+{{- /* 2. Identity must be set. Empty clusterId/instanceId build a broken Vault path
+        (secret/data/mas//...) that renders fine but never resolves at sync time. */ -}}
+{{- if not .Values.clusterId -}}
+{{- fail "clusterId must be set in gitops/envs/<cluster>/common.yaml" -}}
+{{- end -}}
+{{- if not (.Values.account).id -}}
+{{- fail "account.id must be set in gitops/envs/<cluster>/common.yaml (unique per env, convention: = clusterId). It is the config-repo glob prefix and Vault path prefix; two envs sharing it cross-generate each other's apps." -}}
+{{- end -}}
+{{- if not .Values.instanceId -}}
+{{- fail "instanceId must be set in gitops/envs/<cluster>/values.yaml" -}}
+{{- end -}}
+{{- if not (.Values.mongo).namespace -}}
+{{- fail "mongo.namespace must be set in gitops/envs/<cluster>/values.yaml (must equal MONGO_NS in the config repo env file)" -}}
+{{- end -}}
+
+{{- /* 3. Vault-workaround guard: the IBM source MUST be the Vault patch branch. A stock
+        release tag (e.g. 8.4.0) ships the AWS Secrets Manager harvest jobs, which never
+        write to Vault — SLS/DRO registration would then silently never appear and the
+        Suite would hang forever. Catch it before a single Application is created. */ -}}
+{{- $rev := (.Values.source).revision | toString -}}
+{{- if regexMatch "^[0-9]+\\.[0-9]+\\.[0-9]+$" $rev -}}
+{{- fail (printf "source.revision is '%s' (a stock IBM release tag). This Vault-backed deployment requires the patched branch (e.g. 8.4.0-vault-patch); a stock tag ships AWS Secrets Manager harvest jobs that never write to Vault." $rev) -}}
+{{- end -}}

@@ -1,0 +1,73 @@
+# Global defaults. Environment files override only values that differ per cluster.
+# Which component this render emits. The bootstrap scripts set it per component
+# (--set component=vault|mongo|mas|grafana); "all" renders everything for a single-shot.
+# This replaces the old installStage app-of-apps staging: components are now independent
+# Applications applied directly by their own script, coupled only through Vault secrets.
+component: all
+project: mas
+argoNamespace: openshift-gitops
+
+platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: main }
+source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git", revision: "8.4.0-vault-patch" }
+generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: main }
+
+# No default account — each env MUST set its own UNIQUE account.id in
+# gitops/envs/<cluster>/common.yaml (convention: account.id == clusterId). The Account
+# Root App globs "<account.id>/*/..." in the config repo, so two envs sharing an account
+# would cross-generate each other's apps. validate.yaml fails the render if it's unset.
+account: { id: "" }
+storageClass: isilon
+vault:
+  chartVersion: "0.32.0"
+  imageRepository: registry.connect.redhat.com/hashicorp/vault
+  imageTag: "1.21.2-ubi"
+  dataSize: 20Gi
+  auditSize: 10Gi
+  replicas: 3
+  host: vault.example.local
+
+# With the mas component, IBM's account root takes over orchestration using its own
+# ApplicationSets, sync waves, health checks, and patched Vault write-back jobs.
+accountRoot: { autoSync: true, clusterAdminRole: true, applicationAdminRole: true }
+grafana: { namespace: grafana }
+mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: community-operator, version: "0.12.0" }
+mongoImage: { repo: "quay.io/ibmmas", name: "mongo", imageType: "ubi8-20250817T080412Z" }
+
+# OLM operators installed by the 'operators' component (reusable workloads/operators chart).
+# cert-manager is REQUIRED — MongoDB's Issuer/Certificate AND MAS both need it — and mirrors
+# IBM's 010-redhat-cert-manager exactly (same operator/channel/namespace) so MAS gets the
+# cert-manager it expects in the 'cert-manager' namespace. grafana-operator is added to the
+# list only when enable.grafana is true.
+certManagerOperator:
+  name: openshift-cert-manager-operator
+  package: openshift-cert-manager-operator
+  channel: stable-v1
+  source: redhat-operators
+  sourceNamespace: openshift-marketplace
+  namespace: cert-manager-operator
+  ogAllNamespaces: false            # OwnNamespace; the operator manages cert-manager cluster-wide itself
+  installPlanApproval: Automatic
+grafanaOperator:
+  name: grafana-operator
+  package: grafana-operator
+  channel: v5
+  source: community-operators
+  sourceNamespace: openshift-marketplace
+  namespace: platform-operators
+  ogAllNamespaces: true
+  startingCSV: grafana-operator.v5.21.2   # PIN: v5.22.x CRD breaks on OCP < 4.19
+  installPlanApproval: Manual
+
+auto_delete: false
+
+enable:
+  # cert-manager: install the Red Hat cert-manager operator via the 'operators' component.
+  # Set false per-env (gitops/envs/<cluster>/values.yaml) when a platform team already owns
+  # cert-manager on the cluster — MAS/Mongo then use the existing one. If false AND absent,
+  # 20-mongodb/30-mas fail early with a clear "cert-manager CRD not found" message.
+  certManager: true
+  grafana: false
+
+clusterId: ""
+instanceId: ""
+mongo: { namespace: "", members: 3, version: "7.0.23", adminUser: admin }

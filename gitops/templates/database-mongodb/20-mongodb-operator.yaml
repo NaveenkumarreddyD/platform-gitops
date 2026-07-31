@@ -1,0 +1,39 @@
+# MongoDB Community Operator (independent component: ./bootstrap/20-mongodb.sh <env>).
+{{- if has .Values.component (list "mongodb" "all") }}
+---
+# MongoDB Community Operator the IBM way: the operator's own Helm chart (creates the
+# mongodb-kubernetes-operator deployment), NOT OLM. Watches the dedicated mongo namespace.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: mongodb-operator
+  namespace: {{ .Values.argoNamespace }}
+  labels: { app.kubernetes.io/part-of: mas-platform, mas.ibm.com/component: mongodb }
+  annotations: { argocd.argoproj.io/sync-wave: "20" }
+  finalizers: [ resources-finalizer.argocd.argoproj.io ]
+spec:
+  revisionHistoryLimit: 10
+  project: {{ .Values.project }}
+  destination:
+    server: "https://kubernetes.default.svc"
+    namespace: {{ include "gitops.mongoNs" . }}
+  source:
+    repoURL: {{ .Values.mongoOperator.repo }}
+    chart: {{ .Values.mongoOperator.chart }}
+    targetRevision: {{ .Values.mongoOperator.version | quote }}
+    helm:
+      releaseName: mongodb-community-operator
+      values: |
+        community-operator-crds: { enabled: true }
+        operator: { watchNamespace: {{ include "gitops.mongoNs" . }} }
+        mongodb:
+          name: {{ .Values.mongoImage.name | quote }}
+          repo: {{ .Values.mongoImage.repo | quote }}
+          imageType: {{ .Values.mongoImage.imageType | quote }}
+  syncPolicy:
+    automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
+    retry:
+      limit: 5
+      backoff: { duration: 5s, factor: 2, maxDuration: 3m }
+    syncOptions: [ "CreateNamespace=true", "ServerSideApply=true" ]
+{{- end }}
