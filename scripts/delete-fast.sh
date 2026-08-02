@@ -9,7 +9,7 @@ set -euo pipefail
 #   * ApplicationSets are deleted BEFORE Applications (an appset left alive regenerates
 #     its apps the moment Argo CD resumes).
 #   * Official orderly teardown is config-file removal + prune sync + PostDelete hooks
-#     (docs/orchestration.md). This script is the FAST path for a full recreate: Argo CD
+#     (see ibm-gitops/docs/orchestration.md). This script is the FAST path for a full recreate: Argo CD
 #     is paused, so PostDelete hooks cannot run — instead the MAS CR finalizers are
 #     stripped and the namespaces are removed directly. Do not use it to remove a single
 #     app from a running install; remove the config file and prune-sync for that.
