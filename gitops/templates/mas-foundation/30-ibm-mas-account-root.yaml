@@ -37,7 +37,7 @@ spec:
           projects: { rootapps: {{ .Values.project }}, apps: {{ .Values.project }} }
         cluster_admin_role: {{ .Values.accountRoot.clusterAdminRole }}
         application_admin_role: {{ .Values.accountRoot.applicationAdminRole }}
-        auto_delete: false
+        auto_delete: {{ .Values.auto_delete }}
 {{- if .Values.accountRoot.autoSync }}
   syncPolicy:
     automated: { prune: false, selfHeal: true }
