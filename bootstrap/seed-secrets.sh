@@ -58,15 +58,26 @@ vkv "$P/mongo"     username=admin    password="$(rndpw)" host="$MONGO_HOST" ca.c
 vkv "$P/sls-mongo" username=slsmongo password="$(rndpw)" ca.crt="$CA_PEM"
 say "  ok  mongo-ca, mongo (host=$MONGO_HOST), sls-mongo"
 
-# certs/public — only when providing a real MAS cert (MAS_MANUAL_CERT_MGMT=true).
+# certs/public — ALWAYS seeded. Manage requires a public cert (unlike the Suite, it can't
+# self-sign), so seed either the real cert (MAS_TLS_* files) or a self-signed placeholder.
 if [[ -n "${MAS_TLS_CRT_FILE:-}" && -n "${MAS_TLS_KEY_FILE:-}" && -n "${MAS_CA_FILE:-}" ]]; then
   vkv "$P/certs/public" \
     tls_crt_b64="$(base64 < "$MAS_TLS_CRT_FILE" | tr -d '\r\n')" \
     tls_key_b64="$(base64 < "$MAS_TLS_KEY_FILE" | tr -d '\r\n')" \
     ca_crt_b64="$(base64 < "$MAS_CA_FILE" | tr -d '\r\n')"
-  say "  ok  certs/public (manual MAS cert)"
+  say "  ok  certs/public (real MAS cert)"
 else
-  say "  --  certs/public skipped (MAS self-signs; set MAS_TLS_CRT_FILE/KEY/CA to provide a real cert)"
+  # Self-signed placeholder (browsers warn until you swap the real cert). Domain derives from the
+  # vault host (vault.apps.<cluster>... -> <instance>.apps.<cluster>...); override with MAS_DOMAIN.
+  MAS_DOMAIN="${MAS_DOMAIN:-${INSTANCE}.${VAULT_HOST_APPS:-$(env_vault_host | sed 's/^vault\.//')}}"
+  openssl req -x509 -new -nodes -newkey rsa:4096 -sha256 -days 825 \
+    -keyout "$PKI_DIR/mas-tls.key" -out "$PKI_DIR/mas-tls.crt" \
+    -subj "/CN=${MAS_DOMAIN}" -addext "subjectAltName=DNS:${MAS_DOMAIN},DNS:*.${MAS_DOMAIN}" 2>/dev/null
+  vkv "$P/certs/public" \
+    tls_crt_b64="$(base64 < "$PKI_DIR/mas-tls.crt" | tr -d '\r\n')" \
+    tls_key_b64="$(base64 < "$PKI_DIR/mas-tls.key" | tr -d '\r\n')" \
+    ca_crt_b64="$(base64 < "$PKI_DIR/mas-tls.crt" | tr -d '\r\n')"
+  say "  ok  certs/public (self-signed placeholder for ${MAS_DOMAIN} — swap real cert later)"
 fi
 
 say "done. Move $PKI_DIR + vault-init-$ENV.json to escrow. NEXT: ./bootstrap/12-vault-verify.sh $ENV"

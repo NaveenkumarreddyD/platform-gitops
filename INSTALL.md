@@ -139,19 +139,19 @@ Optional exports (before running it):
 
 | Export | Purpose |
 |---|---|
-| `MAS_TLS_CRT_FILE` `MAS_TLS_KEY_FILE` `MAS_CA_FILE` | seed a real MAS core cert — only with `MAS_MANUAL_CERT_MGMT=true`; omit to let MAS self-sign |
+| `MAS_TLS_CRT_FILE` `MAS_TLS_KEY_FILE` `MAS_CA_FILE` | provide a real MAS public cert; if unset, the script seeds a **self-signed placeholder** (Manage requires a cert — it can't self-sign) |
 | `MONGO_CA_CRT_FILE` `MONGO_CA_KEY_FILE` | bring your own Mongo CA instead of generating one |
-| `MONGO_HOST` | override the derived Mongo host |
+| `MONGO_HOST` / `MAS_DOMAIN` | override the derived Mongo host / MAS domain |
 
-It does **not** seed `dro`/`sls` — the patched IBM Jobs write those in step 9. To add a real MAS
-cert later: set `MAS_MANUAL_CERT_MGMT=true` in `mas-gitops-config/envs/<cluster>.env`, re-render +
-commit, re-run the seed with `MAS_TLS_*`/`MAS_CA_FILE` exported, then
-`oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite`.
+It does **not** seed `dro`/`sls` — the patched IBM Jobs write those in step 9. `certs/public` is
+**always** seeded (real cert if you export `MAS_TLS_*`, otherwise a self-signed placeholder). To swap
+in the real cert later, re-run the seed with `MAS_TLS_*`/`MAS_CA_FILE` exported, then
+`oc annotate application manage.<cluster>.<instance> -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite`.
 
 Verify, then move the PKI to escrow:
 
 ```bash
-./bootstrap/12-vault-verify.sh drroc4     # must print PASS (certs/public shows -- when self-signing)
+./bootstrap/12-vault-verify.sh drroc4     # must print PASS
 ```
 
 ## 8. Deploy MongoDB
