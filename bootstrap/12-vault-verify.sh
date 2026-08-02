@@ -22,12 +22,14 @@ $P/mongo#host
 $P/mongo#ca.crt
 $P/sls-mongo#username
 $P/sls-mongo#password
+"
+# Optional paths:
+#  - certs/public : only when MAS_MANUAL_CERT_MGMT=true (else MAS auto-generates a self-signed core cert)
+#  - manage-crypto: only when MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=false
+OPTIONAL="
 $P/certs/public#tls_crt_b64
 $P/certs/public#tls_key_b64
 $P/certs/public#ca_crt_b64
-"
-# Only required when Manage encryption keys are Vault-managed (autoGenerateEncryptionKeys=false).
-OPTIONAL="
 $P/manage-crypto#cryptoKey
 $P/manage-crypto#cryptoxKey
 "
@@ -43,8 +45,8 @@ for pf in $REQUIRED; do
   if check "$pf"; then printf '  OK    %s\n' "$pf"; else printf '  MISSING %s\n' "$pf"; fail=1; fi
 done
 for pf in $OPTIONAL; do
-  if check "$pf"; then printf '  OK    %s  (Vault-managed crypto)\n' "$pf"
-  else printf '  --    %s  (absent → Manage must use autoGenerateEncryptionKeys=true)\n' "$pf"; fi
+  if check "$pf"; then printf '  OK    %s  (present)\n' "$pf"
+  else printf '  --    %s  (absent → MAS uses its default; seed only if you enable the manual option)\n' "$pf"; fi
 done
 echo
 if [[ "$fail" == 0 ]]; then

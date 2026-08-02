@@ -124,31 +124,28 @@ oc adm policy add-cluster-role-to-user system:auth-delegator -z vault -n vault
 
 ## 7. Seed secrets
 
+Export your inputs (this shell only), then run the puts — no prompts:
+
 ```bash
+export IBM_ENTITLEMENT_KEY='...'
+export LICENSE_FILE='/secure/path/license.dat'
+export JDBC_USER='...'  JDBC_PASS='...'  JDBC_URL='jdbc:oracle:thin:@//host:1521/SERVICE'
+
 vkv(){ oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
        VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv put "$@"; }
 ```
 
 Do **not** seed the `dro` or `sls` paths — the patched IBM Jobs write those during step 9.
 
-Entitlement + license:
+Entitlement + license + Oracle JDBC:
 
 ```bash
-read -rsp 'IBM entitlement key: ' IBM_ENTITLEMENT_KEY; echo
 ENTITLEMENT_B64="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' \
   "$(printf 'cp:%s' "$IBM_ENTITLEMENT_KEY" | base64 | tr -d '\r\n')" | base64 | tr -d '\r\n')"
-unset IBM_ENTITLEMENT_KEY
 vkv secret/drroc4/drroc4/entitlement image_pull_secret_b64="$ENTITLEMENT_B64"
-vkv secret/drroc4/drroc4/drgitopsapp/license license_file="$(cat /secure/path/license.dat)"
-```
-
-Oracle JDBC:
-
-```bash
-read -rp  'Oracle username: ' JDBC_USER
-read -rsp 'Oracle password: ' JDBC_PASS; echo
-read -rp  'Oracle JDBC URL: ' JDBC_URL
-vkv secret/drroc4/drroc4/drgitopsapp/jdbc-system username="$JDBC_USER" password="$JDBC_PASS" jdbc_url="$JDBC_URL"
+vkv secret/drroc4/drroc4/drgitopsapp/license license_file="$(cat "$LICENSE_FILE")"
+vkv secret/drroc4/drroc4/drgitopsapp/jdbc-system \
+  username="$JDBC_USER" password="$JDBC_PASS" jdbc_url="$JDBC_URL"
 ```
 
 MongoDB CA (generated once) + credentials:
@@ -159,49 +156,31 @@ openssl genrsa -out "$HOME/mas-drroc4-pki/mongo-ca.key" 4096
 openssl req -x509 -new -nodes -key "$HOME/mas-drroc4-pki/mongo-ca.key" -sha256 -days 3650 \
   -subj '/CN=drgitopsapp-mongo-ca' -out "$HOME/mas-drroc4-pki/mongo-ca.crt"
 MONGO_CA_PEM="$(cat "$HOME/mas-drroc4-pki/mongo-ca.crt")"
-MONGO_PW="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)"
-SLS_MONGO_PW="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)"
 
 vkv secret/drroc4/drroc4/drgitopsapp/mongo-ca \
   tls_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mongo-ca.crt" | tr -d '\r\n')" \
   tls_key_b64="$(base64 < "$HOME/mas-drroc4-pki/mongo-ca.key" | tr -d '\r\n')"
 vkv secret/drroc4/drroc4/drgitopsapp/mongo \
-  username=admin password="$MONGO_PW" \
+  username=admin password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)" \
   host=drgitopsapp-mongo-svc.mongo-gitops.svc.cluster.local ca.crt="$MONGO_CA_PEM"
 vkv secret/drroc4/drroc4/drgitopsapp/sls-mongo \
-  username=slsmongo password="$SLS_MONGO_PW" ca.crt="$MONGO_CA_PEM"
+  username=slsmongo password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)" ca.crt="$MONGO_CA_PEM"
 ```
 
-MAS public certificate — real cert (from the supplied PFX):
+**MAS public certificate — default (self-signed by MAS).** With `MAS_MANUAL_CERT_MGMT=false` in the
+config env (the default), MAS auto-generates its own core cert, so **nothing to seed here**. To use
+your own cert later: set `MAS_MANUAL_CERT_MGMT=true` in `mas-config-repo/envs/<cluster>.env`,
+re-render + commit, then seed `certs/public` and hard-refresh:
 
 ```bash
-openssl pkcs12 -in /secure/path/mas-public.pfx -clcerts -nokeys -out "$HOME/mas-drroc4-pki/mas-tls.crt"
-openssl pkcs12 -in /secure/path/mas-public.pfx -nocerts -nodes  -out "$HOME/mas-drroc4-pki/mas-tls.key"
-openssl pkcs12 -in /secure/path/mas-public.pfx -cacerts -nokeys -out "$HOME/mas-drroc4-pki/mas-ca.crt"
 vkv secret/drroc4/drroc4/drgitopsapp/certs/public \
-  tls_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.crt" | tr -d '\r\n')" \
-  tls_key_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.key" | tr -d '\r\n')" \
-  ca_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-ca.crt" | tr -d '\r\n')"
+  tls_crt_b64="$(base64 < mas-tls.crt | tr -d '\r\n')" \
+  tls_key_b64="$(base64 < mas-tls.key | tr -d '\r\n')" \
+  ca_crt_b64="$(base64 < mas-ca.crt   | tr -d '\r\n')"
+oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-**No real cert yet? Self-signed placeholder** (browsers warn until you swap it; Manage owns its
-own cert, so it's unaffected). Only the core/Suite cert is self-signed:
-
-```bash
-MAS_DOMAIN=drgitopsapp.apps.drroc4.lac1.biz
-openssl req -x509 -new -nodes -newkey rsa:4096 -sha256 -days 825 \
-  -keyout "$HOME/mas-drroc4-pki/mas-tls.key" -out "$HOME/mas-drroc4-pki/mas-tls.crt" \
-  -subj "/CN=${MAS_DOMAIN}" -addext "subjectAltName=DNS:${MAS_DOMAIN},DNS:*.${MAS_DOMAIN}"
-vkv secret/drroc4/drroc4/drgitopsapp/certs/public \
-  tls_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.crt" | tr -d '\r\n')" \
-  tls_key_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.key" | tr -d '\r\n')" \
-  ca_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.crt" | tr -d '\r\n')"   # self-signed → its own CA
-```
-
-Swap the real cert later with no config change: re-run the `vkv … certs/public` put with the real
-files, then `oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite`.
-
-Verify, then move the PKI to escrow:
+Verify (certs/public shows `--` when using the default; that's fine), then move the PKI to escrow:
 
 ```bash
 ./bootstrap/12-vault-verify.sh drroc4     # must print PASS
