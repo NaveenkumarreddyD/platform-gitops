@@ -63,7 +63,10 @@ spec:
             - { name: service-ca-bundle, mountPath: /vault/userconfig/service-ca-bundle, readOnly: true }
           route:
             enabled: true
-            activeService: false
+            # Point at the ACTIVE service: only the active pod serves the UI (standby pods redirect),
+            # and its serving cert (vault-active.vault.svc) matches this service. 10-vault.sh injects
+            # the service CA into the route's destinationCACertificate so the reencrypt router trusts it.
+            activeService: true
             host: {{ .Values.vault.host }}
             tls: { termination: reencrypt, insecureEdgeTerminationPolicy: Redirect }
           dataStorage:  { enabled: true, size: {{ .Values.vault.dataSize }},  storageClass: {{ .Values.storageClass }}, accessMode: ReadWriteOnce }
@@ -101,6 +104,13 @@ spec:
   destination:
     server: "https://kubernetes.default.svc"
     namespace: vault
+  # 10-vault.sh patches the route's destinationCACertificate (runtime service CA); ignore it so
+  # selfHeal doesn't revert the patch.
+  ignoreDifferences:
+    - group: route.openshift.io
+      kind: Route
+      name: vault
+      jsonPointers: [ /spec/tls/destinationCACertificate ]
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     retry:
