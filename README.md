@@ -1,44 +1,44 @@
 # IBM MAS platform GitOps
 
-This repository is a thin App-of-Apps wrapper for a fresh IBM MAS installation on
-OpenShift. Argo CD performs reconciliation; operators run only the documented day-0
-commands and manually administer Vault while it is the temporary secret backend.
+Deploys a fresh IBM MAS installation on OpenShift with HashiCorp Vault as the temporary
+secrets backend (until AWS Secrets Manager). Argo CD reconciles; operators run the numbered
+bootstrap scripts and administer Vault manually while it is the temporary backend.
 
 ## Repositories
 
-| Repository | Responsibility | Required revision |
+| Repository | Responsibility | Branch |
 |---|---|---|
-| `platform-gitops` | Vault, MongoDB, bootstrap, and the IBM account root | `main` after this change is merged |
-| `mas-gitops-config` | Direct IBM cluster and instance configuration | `main` |
-| `ibm-mas-gitops` | IBM release plus the temporary Vault/JDBC compatibility patch | `8.4.0-vault-patch` |
+| `platform-gitops` | Operators (cert-manager), Vault, MongoDB, bootstrap, IBM account root | `mas-vault-deploy` |
+| `mas-gitops-config` | IBM cluster + instance configuration (per-account) | `mas-vault-deploy` |
+| `ibm-mas-gitops` | IBM release + temporary Vault/JDBC compatibility patch | `8.4.0-vault-patch` |
 
-## Install stages
+## Decoupled components
 
-| Stage | Applications created |
-|---|---|
-| `secrets` | Vault only |
-| `database` | Vault, MongoDB operator, and MongoDB instance |
-| `mas` | Previous stages plus IBM's account root and optional Grafana |
+No app-of-apps, no `installStage`. Operators, Vault, MongoDB, and MAS are **independent** Argo CD
+Applications, each deployed by its own numbered script and coupled only through Vault secret paths:
 
-The stage is set in `gitops/envs/drroc4/values.yaml`. IBM's own account, cluster,
-and instance roots handle the MAS order after the `mas` stage begins.
+```text
+00-prereqs → 05-operators → 10-vault → 11-vault-config → seed-secrets → 12-vault-verify → 20-mongodb → 30-mas
+```
+
+Each script asserts its prerequisite and refuses to run early. `./scripts/status.sh <env>` shows
+every component at a glance. Any layer can be redeployed on its own.
 
 ## Layout
 
 ```text
-bootstrap/   One-time Argo CD resources and CR patches
-gitops/      Staged App-of-Apps Helm chart
-workloads/   Small MongoDB, Grafana, and optional operator charts
-vault-auth/  Least-privilege Vault policies and role documentation
-scripts/     Legacy recovery/diagnostic utilities; not used by INSTALL.md
+bootstrap/   Numbered install scripts + seed-secrets + one-time Argo CD resources/patches
+gitops/      Component Helm chart (--set component=…) + per-env values (envs/<cluster>/)
+workloads/   MongoDB, OLM operators (cert-manager/grafana), and Grafana charts
+vault-auth/  Least-privilege Vault policies
+scripts/     status, preflight, teardown
 ```
 
-Start with [INSTALL.md](INSTALL.md). Use [RUNBOOK.md](RUNBOOK.md) only for status,
-troubleshooting, and recovery.
+Start with [INSTALL.md](INSTALL.md); use [RUNBOOK.md](RUNBOOK.md) for troubleshooting and recovery.
 
-## Temporary divergence
+## Temporary Vault workaround
 
-IBM MAS GitOps `8.4.0` supports AWS Secrets Manager. Until AWS access is available,
-the internal `8.4.0-vault-patch` branch changes only SLS/DRO runtime write-back and
-the external Oracle JDBC SSL toggle. See `PATCH.md` in that repository. Revert to an
+IBM MAS GitOps `8.4.0` supports AWS Secrets Manager. Until that is available, the internal
+`8.4.0-vault-patch` branch changes only the SLS/DRO runtime write-back (to Vault instead of AWS SM)
+and the external Oracle JDBC SSL toggle — see `PATCH.md` in that repository. Revert to an
 unmodified IBM release when AWS Secrets Manager and Oracle TCPS are available.
