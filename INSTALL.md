@@ -89,7 +89,7 @@ umask 077
 oc exec -n vault vault-0 -- env \
   VAULT_ADDR=https://127.0.0.1:8200 \
   VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
-  VAULT_TLS_SERVER_NAME=vault.vault.svc \
+  VAULT_TLS_SERVER_NAME=vault-active.vault.svc \
   vault operator init -key-shares=5 -key-threshold=3 -format=json > "$HOME/vault-init-drroc4.json"
 
 export VAULT_ROOT_TOKEN="$(jq -r '.root_token'     "$HOME/vault-init-drroc4.json")"
@@ -106,14 +106,14 @@ for pod in vault-0 vault-1 vault-2; do
   for attempt in $(seq 1 30); do
     if oc exec -n vault "$pod" -- env VAULT_ADDR=https://127.0.0.1:8200 \
          VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
-         VAULT_TLS_SERVER_NAME=vault.vault.svc \
+         VAULT_TLS_SERVER_NAME=vault-active.vault.svc \
          vault status -format=json 2>/dev/null | grep -qE '"sealed":[[:space:]]*false'; then
       echo "  unsealed"; break
     fi
     for key in "$UNSEAL_KEY_1" "$UNSEAL_KEY_2" "$UNSEAL_KEY_3"; do
       oc exec -n vault "$pod" -- env VAULT_ADDR=https://127.0.0.1:8200 \
         VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
-        VAULT_TLS_SERVER_NAME=vault.vault.svc \
+        VAULT_TLS_SERVER_NAME=vault-active.vault.svc \
         vault operator unseal "$key" >/dev/null 2>&1 || true
     done
     sleep 5
@@ -187,11 +187,11 @@ write SLS/DRO registration into Vault. Don't hand-create those resources.
 ```bash
 oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 \
   VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
-  VAULT_TLS_SERVER_NAME=vault.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+  VAULT_TLS_SERVER_NAME=vault-active.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
   vault kv get secret/drroc4/drroc4/dro
 oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 \
   VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
-  VAULT_TLS_SERVER_NAME=vault.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+  VAULT_TLS_SERVER_NAME=vault-active.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
   vault kv get secret/drroc4/drroc4/drrocapp/sls
 ```
 

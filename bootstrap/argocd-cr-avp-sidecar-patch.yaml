@@ -79,7 +79,7 @@ spec:
           - name: AVP_K8S_ROLE
             value: mas-gitops
           - name: VAULT_ADDR
-            value: https://vault.vault.svc.cluster.local:8200
+            value: https://vault-active.vault.svc.cluster.local:8200
           - name: VAULT_CACERT
             value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
         securityContext:

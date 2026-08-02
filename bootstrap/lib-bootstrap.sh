@@ -13,7 +13,7 @@ ARGO_NS="${ARGO_NS:-openshift-gitops}"
 VAULT_NS="${VAULT_NS:-vault}"
 VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-https://127.0.0.1:8200}"
 VAULT_CACERT_IN_POD="${VAULT_CACERT_IN_POD:-/vault/userconfig/service-ca-bundle/service-ca.crt}"
-VAULT_TLS_SERVER_NAME="${VAULT_TLS_SERVER_NAME:-vault.vault.svc}"
+VAULT_TLS_SERVER_NAME="${VAULT_TLS_SERVER_NAME:-vault-active.vault.svc}"
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
 say(){ echo ">> $*"; }

@@ -4,7 +4,7 @@ VAULT_NAMESPACE="${VAULT_NAMESPACE:-vault}"
 VAULT_POD="${VAULT_POD:-vault-0}"
 ARGO_NAMESPACE="${ARGO_NAMESPACE:-openshift-gitops}"
 VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-https://127.0.0.1:8200}"
-VAULT_ADDR_FOR_AVP="${VAULT_ADDR_FOR_AVP:-https://vault.vault.svc.cluster.local:8200}"
+VAULT_ADDR_FOR_AVP="${VAULT_ADDR_FOR_AVP:-https://vault-active.vault.svc.cluster.local:8200}"
 VAULT_CACERT_IN_POD="${VAULT_CACERT_IN_POD:-/vault/userconfig/service-ca-bundle/service-ca.crt}"
 VAULT_CACERT_FOR_AVP="${VAULT_CACERT_FOR_AVP:-/var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt}"
 AVP_ROLE="${AVP_ROLE:-mas-gitops}"
@@ -12,7 +12,7 @@ if [[ -z "${VAULT_TOKEN:-}" ]]; then echo "ERROR: export VAULT_TOKEN first" >&2;
 oc exec -n "${VAULT_NAMESPACE}" "${VAULT_POD}" -- env \
   VAULT_ADDR="${VAULT_ADDR_IN_POD}" \
   VAULT_CACERT="${VAULT_CACERT_IN_POD}" \
-  VAULT_TLS_SERVER_NAME=vault.vault.svc \
+  VAULT_TLS_SERVER_NAME=vault-active.vault.svc \
   VAULT_TOKEN="${VAULT_TOKEN}" \
   vault kv put secret/mas/test-avp message=hello-from-vault
 POD="$(oc get pod -n "${ARGO_NAMESPACE}" | awk '/repo-server/ {print $1; exit}')"

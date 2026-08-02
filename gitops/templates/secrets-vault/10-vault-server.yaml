@@ -46,7 +46,7 @@ spec:
           image: { repository: {{ .Values.vault.imageRepository }}, tag: {{ .Values.vault.imageTag | quote }} }
           extraEnvironmentVars:
             VAULT_CACERT: /vault/userconfig/service-ca-bundle/service-ca.crt
-            VAULT_TLS_SERVER_NAME: vault.vault.svc
+            VAULT_TLS_SERVER_NAME: vault-active.vault.svc
           # OpenShift's service-ca issues the serving cert into secret 'vault-tls' (mounted below)
           # because of this annotation on the Vault Service.
           service:
@@ -89,7 +89,7 @@ spec:
 {{- range $i := until (int .Values.vault.replicas) }}
                   retry_join {
                     leader_api_addr = "https://vault-{{ $i }}.vault-internal:8200"
-                    leader_tls_servername = "vault.vault.svc"
+                    leader_tls_servername = "vault-active.vault.svc"
                     leader_ca_cert_file = "/vault/userconfig/service-ca-bundle/service-ca.crt"
                   }
 {{- end }}

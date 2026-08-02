@@ -62,9 +62,9 @@ oc annotate application <vault|mongodb-operator|mongodb|ibm-mas-account-root> -n
 Check every node:
 
 ```bash
-oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault.vault.svc vault status
-oc exec -n vault vault-1 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault.vault.svc vault status
-oc exec -n vault vault-2 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault.vault.svc vault status
+oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault-active.vault.svc vault status
+oc exec -n vault vault-1 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault-active.vault.svc vault status
+oc exec -n vault vault-2 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault-active.vault.svc vault status
 ```
 
 An authorized operator must apply three different unseal shares to each sealed pod, as
@@ -86,7 +86,7 @@ Verify in Vault:
 - The namespace is `openshift-gitops`.
 - The role includes policy `mas-gitops`.
 - The requested path and field exist with exactly the same spelling and scope.
-- Vault is unsealed and `https://vault.vault.svc.cluster.local:8200` is reachable with the OpenShift service CA.
+- Vault is unsealed and `https://vault-active.vault.svc.cluster.local:8200` is reachable with the OpenShift service CA.
 
 ## MongoDB is not Running
 
@@ -209,7 +209,7 @@ secret changes:
 ```bash
 oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 \
   VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
-  VAULT_TLS_SERVER_NAME=vault.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+  VAULT_TLS_SERVER_NAME=vault-active.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
   vault operator raft snapshot save /tmp/drroc4.snap
 oc cp vault/vault-0:/tmp/drroc4.snap "$HOME/drroc4-vault.snap"
 oc exec -n vault vault-0 -- rm -f /tmp/drroc4.snap
