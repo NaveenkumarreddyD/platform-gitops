@@ -20,7 +20,7 @@ checks, day-0 bootstrap, and teardown — not installers.
 
 Manage attachments on PowerScale S3 are configured in the Manage **database** (the
 `mxe.cos*` system properties, applied via the Manage UI/API) — see
-`mas-config-repo/docs/manage-attachments-powerscale-s3.md`. They are not managed from
+`mas-gitops-config/docs/manage-attachments-powerscale-s3.md`. They are not managed from
 this repo, so no attachment scripts live here.
 
 ## Removed scripts

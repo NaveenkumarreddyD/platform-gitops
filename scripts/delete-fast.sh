@@ -49,7 +49,7 @@ if [[ -n "$ENVARG" && -f "$ENVARG" ]]; then
   ENVFILE="$ENVARG"
 elif [[ -n "$ENVARG" ]]; then
   for d in "$ROOT/.." "$ROOT/../.." "$ROOT/../../.."; do
-    for repo in mas-gitops-config mas-config-repo; do
+    for repo in mas-gitops-config; do
       [[ -f "$d/$repo/envs/${ENVARG}.env" ]] && { ENVFILE="$d/$repo/envs/${ENVARG}.env"; break 2; }
     done
   done

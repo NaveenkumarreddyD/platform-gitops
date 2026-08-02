@@ -9,7 +9,7 @@ commands and manually administer Vault while it is the temporary secret backend.
 | Repository | Responsibility | Required revision |
 |---|---|---|
 | `platform-gitops` | Vault, MongoDB, bootstrap, and the IBM account root | `main` after this change is merged |
-| `mas-config-repo` | Direct IBM cluster and instance configuration | `main` |
+| `mas-gitops-config` | Direct IBM cluster and instance configuration | `main` |
 | `ibm-mas-gitops` | IBM release plus the temporary Vault/JDBC compatibility patch | `8.4.0-vault-patch` |
 
 ## Install stages

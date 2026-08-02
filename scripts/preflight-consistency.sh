@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Read-only cross-repo consistency check. account.id / clusterId / instanceId build the
-# Vault secret path in BOTH platform-gitops (gitops.path helper) and mas-config-repo
+# Vault secret path in BOTH platform-gitops (gitops.path helper) and mas-gitops-config
 # (rendered <path:...> refs); if they disagree the paths diverge and the install fails
 # LATE (this is the drroc4-vs-gitopsapp class of failure). This asserts they agree BEFORE
 # you bootstrap. It makes NO changes.
@@ -14,14 +14,14 @@ VALUES="$ROOT/gitops/envs/$CLUSTER/values.yaml"
 
 ENVFILE=""
 for d in "$ROOT/.." "$ROOT/../.."; do
-  for repo in mas-gitops-config mas-config-repo; do
+  for repo in mas-gitops-config; do
     [[ -f "$d/$repo/envs/$CLUSTER.env" ]] && { ENVFILE="$d/$repo/envs/$CLUSTER.env"; break 2; }
   done
 done
 
 [[ -f "$COMMON" ]]  || { echo "MISSING: $COMMON"  >&2; exit 2; }
 [[ -f "$VALUES" ]]  || { echo "MISSING: $VALUES"  >&2; exit 2; }
-[[ -n "$ENVFILE" ]] || { echo "MISSING: mas-config-repo/envs/$CLUSTER.env (expected beside platform-gitops)" >&2; exit 2; }
+[[ -n "$ENVFILE" ]] || { echo "MISSING: mas-gitops-config/envs/$CLUSTER.env (expected beside platform-gitops)" >&2; exit 2; }
 
 # platform side (simple key: value / inline-flow-map parsing)
 # account.id is now per-env: read the env's common.yaml first, fall back to the global default.

@@ -16,7 +16,7 @@ account, so step 6 is identical for every env.
 | Repo | GitLab branch |
 |---|---|
 | `platform-gitops` | `mas-vault-deploy` |
-| `mas-config-repo` | `mas-vault-deploy` |
+| `mas-gitops-config` | `mas-vault-deploy` |
 | `ibm-mas-gitops` | `8.4.0-vault-patch` |
 
 ```bash
@@ -144,7 +144,7 @@ Optional exports (before running it):
 | `MONGO_HOST` | override the derived Mongo host |
 
 It does **not** seed `dro`/`sls` — the patched IBM Jobs write those in step 9. To add a real MAS
-cert later: set `MAS_MANUAL_CERT_MGMT=true` in `mas-config-repo/envs/<cluster>.env`, re-render +
+cert later: set `MAS_MANUAL_CERT_MGMT=true` in `mas-gitops-config/envs/<cluster>.env`, re-render +
 commit, re-run the seed with `MAS_TLS_*`/`MAS_CA_FILE` exported, then
 `oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite`.
 
