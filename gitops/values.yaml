@@ -21,8 +21,8 @@ vault:
   chartVersion: "0.32.0"
   imageRepository: registry.connect.redhat.com/hashicorp/vault
   imageTag: "1.21.2-ubi"
-  dataSize: 20Gi
-  auditSize: 10Gi
+  dataSize: 2Gi
+  auditSize: 1Gi
   replicas: 3
   host: vault.example.local
 
