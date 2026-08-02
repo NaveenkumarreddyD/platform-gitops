@@ -2,6 +2,25 @@
 # deploy with `./bootstrap/10-vault.sh <env>`. Coupled to the rest only via Vault secret paths.
 {{- if has .Values.component (list "vault" "all") }}
 ---
+# The Vault pods mount the OpenShift service-ca bundle, but the Vault chart can't create that
+# ConfigMap — so we create it (annotated for cabundle injection) and its namespace here, before
+# the pods try to mount them. The serving cert (secret 'vault-tls') is issued by the service-ca
+# once the annotated Vault Service below exists.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: vault
+  labels: { app.kubernetes.io/part-of: mas-platform }
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: service-ca-bundle
+  namespace: vault
+  annotations:
+    service.beta.openshift.io/inject-cabundle: "true"
+  labels: { app.kubernetes.io/part-of: mas-platform }
+---
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -28,10 +47,12 @@ spec:
           extraEnvironmentVars:
             VAULT_CACERT: /vault/userconfig/service-ca-bundle/service-ca.crt
             VAULT_TLS_SERVER_NAME: vault.vault.svc
-          serviceCA:
+          # OpenShift's service-ca issues the serving cert into secret 'vault-tls' (mounted below)
+          # because of this annotation on the Vault Service.
+          service:
             enabled: true
-            secretName: vault-tls
-            configMapName: service-ca-bundle
+            annotations:
+              service.beta.openshift.io/serving-cert-secret-name: vault-tls
           volumes:
             - name: vault-tls
               secret: { secretName: vault-tls }
