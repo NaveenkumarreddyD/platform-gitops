@@ -20,6 +20,11 @@ spec:
                 items:
                   - key: ca.crt
                     path: ca.crt
+            - configMap:
+                name: openshift-service-ca.crt
+                items:
+                  - key: service-ca.crt
+                    path: service-ca.crt
             - downwardAPI:
                 items:
                   - path: namespace
@@ -74,7 +79,9 @@ spec:
           - name: AVP_K8S_ROLE
             value: mas-gitops
           - name: VAULT_ADDR
-            value: http://vault-active.vault.svc.cluster.local:8200
+            value: https://vault.vault.svc.cluster.local:8200
+          - name: VAULT_CACERT
+            value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
         securityContext:
           runAsNonRoot: true
           allowPrivilegeEscalation: false

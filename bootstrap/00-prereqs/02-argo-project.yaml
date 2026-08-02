@@ -11,7 +11,7 @@ spec:
     - https://gitlab.lac1.biz/gitops/mas-gitops-config.git
     - https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git
     - https://helm.releases.hashicorp.com        # Vault chart
-    - https://mongodb.github.io/helm-charts       # MongoDB Community Operator chart
+    - https://mongodb.github.io/helm-charts       # MongoDB Controllers for Kubernetes Operator chart
   # DESTINATIONS — in-cluster ONLY. This server lock is the guardrail that matters for this topology:
   # each ArgoCD manages exactly one cluster, so this prevents any cross-cluster deploy. Namespace is
   # left open because IBM's account-root generates apps whose destinations can't be fully enumerated

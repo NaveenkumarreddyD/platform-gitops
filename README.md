@@ -21,7 +21,8 @@ Applications, each deployed by its own numbered script and coupled only through 
 00-prereqs → 05-operators → 10-vault → 11-vault-config → seed-secrets → 12-vault-verify → 20-mongodb → 30-mas
 ```
 
-Each script asserts its prerequisite and refuses to run early. `./scripts/status.sh <env>` shows
+The MongoDB step installs the vendor operator first, waits for its CRDs and deployment, and only
+then creates the database instance. Each script asserts its prerequisite and refuses to run early. `./scripts/status.sh <env>` shows
 every component at a glance. Any layer can be redeployed on its own.
 
 ## Layout
@@ -42,3 +43,7 @@ IBM MAS GitOps `8.4.0` supports AWS Secrets Manager. Until that is available, th
 `8.4.0-vault-patch` branch changes only the SLS/DRO runtime write-back (to Vault instead of AWS SM)
 and the external Oracle JDBC SSL toggle — see `PATCH.md` in that repository. Revert to an
 unmodified IBM release when AWS Secrets Manager and Oracle TCPS are available.
+
+Vault uses the official Helm chart's OpenShift service-CA integration, a re-encrypt Route, and
+verified TLS for AVP and the IBM SLS/DRO write-back Jobs. Static secret seeding requires the root
+token; subsequent preflight checks authenticate through the read-only `mas-gitops` Kubernetes role.

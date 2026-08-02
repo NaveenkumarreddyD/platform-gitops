@@ -19,12 +19,32 @@ spec:
     helm:
       releaseName: vault
       values: |
-        global: { openshift: true, enabled: true }
+        global: { openshift: true, enabled: true, tlsDisable: false }
         injector: { enabled: false }
         server:
           enabled: true
+          authDelegator: { enabled: true }
           image: { repository: {{ .Values.vault.imageRepository }}, tag: {{ .Values.vault.imageTag | quote }} }
-          route: { enabled: true, host: {{ .Values.vault.host }}, tls: { termination: edge } }
+          extraEnvironmentVars:
+            VAULT_CACERT: /vault/userconfig/service-ca-bundle/service-ca.crt
+            VAULT_TLS_SERVER_NAME: vault.vault.svc
+          serviceCA:
+            enabled: true
+            secretName: vault-tls
+            configMapName: service-ca-bundle
+          volumes:
+            - name: vault-tls
+              secret: { secretName: vault-tls }
+            - name: service-ca-bundle
+              configMap: { name: service-ca-bundle }
+          volumeMounts:
+            - { name: vault-tls, mountPath: /vault/userconfig/vault-tls, readOnly: true }
+            - { name: service-ca-bundle, mountPath: /vault/userconfig/service-ca-bundle, readOnly: true }
+          route:
+            enabled: true
+            activeService: false
+            host: {{ .Values.vault.host }}
+            tls: { termination: reencrypt, insecureEdgeTerminationPolicy: Redirect }
           dataStorage:  { enabled: true, size: {{ .Values.vault.dataSize }},  storageClass: {{ .Values.storageClass }}, accessMode: ReadWriteOnce }
           auditStorage: { enabled: true, size: {{ .Values.vault.auditSize }}, storageClass: {{ .Values.storageClass }}, accessMode: ReadWriteOnce }
           ha:
@@ -35,12 +55,23 @@ spec:
               setNodeId: true
               config: |
                 ui = true
-                listener "tcp" { address = "[::]:8200"  cluster_address = "[::]:8201"  tls_disable = 1 }
+                listener "tcp" {
+                  address = "[::]:8200"
+                  cluster_address = "[::]:8201"
+                  tls_disable = 0
+                  tls_cert_file = "/vault/userconfig/vault-tls/tls.crt"
+                  tls_key_file = "/vault/userconfig/vault-tls/tls.key"
+                  tls_client_ca_file = "/vault/userconfig/service-ca-bundle/service-ca.crt"
+                }
                 storage "raft" {
                   path = "/vault/data"
-                  retry_join { leader_api_addr = "http://vault-0.vault-internal:8200" }
-                  retry_join { leader_api_addr = "http://vault-1.vault-internal:8200" }
-                  retry_join { leader_api_addr = "http://vault-2.vault-internal:8200" }
+{{- range $i := until (int .Values.vault.replicas) }}
+                  retry_join {
+                    leader_api_addr = "https://vault-{{ $i }}.vault-internal:8200"
+                    leader_tls_servername = "vault.vault.svc"
+                    leader_ca_cert_file = "/vault/userconfig/service-ca-bundle/service-ca.crt"
+                  }
+{{- end }}
                 }
                 service_registration "kubernetes" {}
           readinessProbe: { enabled: true, path: "/v1/sys/health?standbyok=true&sealedcode=204&uninitcode=204" }

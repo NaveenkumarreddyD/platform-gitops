@@ -1,5 +1,5 @@
 # MongoDB namespace + OpenShift SCC binding required before the operator pod starts.
-{{- if has .Values.component (list "mongodb" "all") }}
+{{- if has .Values.component (list "mongodb-operator" "mongodb" "all") }}
 ---
 apiVersion: v1
 kind: Namespace
@@ -28,6 +28,6 @@ subjects:
     name: mongodb-kubernetes-operator
     namespace: {{ include "gitops.mongoNs" . }}
   - kind: ServiceAccount
-    name: mongodb-database
+    name: mongodb-kubernetes-database-pods
     namespace: {{ include "gitops.mongoNs" . }}
 {{- end }}

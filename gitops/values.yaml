@@ -1,6 +1,6 @@
 # Global defaults. Environment files override only values that differ per cluster.
 # Which component this render emits. The bootstrap scripts set it per component
-# (--set component=vault|mongo|mas|grafana); "all" renders everything for a single-shot.
+# (--set component=vault|mongodb-operator|mongodb-instance|mas|grafana).
 # This replaces the old installStage app-of-apps staging: components are now independent
 # Applications applied directly by their own script, coupled only through Vault secrets.
 component: all
@@ -30,7 +30,9 @@ vault:
 # ApplicationSets, sync waves, health checks, and patched Vault write-back jobs.
 accountRoot: { autoSync: true, clusterAdminRole: true, applicationAdminRole: true }
 grafana: { namespace: grafana }
-mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: community-operator, version: "0.12.0" }
+# Default supports OpenShift 4.17/4.18. bootstrap/20-mongodb.sh detects the live
+# OpenShift minor and overrides this with the matching official operator release.
+mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: mongodb-kubernetes, version: "1.4.0" }
 mongoImage: { repo: "quay.io/ibmmas", name: "mongo", imageType: "ubi8-20250817T080412Z" }
 
 # OLM operators installed by the 'operators' component (reusable workloads/operators chart).

@@ -5,9 +5,9 @@ a stock IBM source, etc.). Rendered on every component render.
 */ -}}
 
 {{- /* 1. component must be a known value. Set by the bootstrap scripts (--set component=…). */ -}}
-{{- $validComponents := list "operators" "vault" "mongodb" "mas" "grafana" "all" -}}
+{{- $validComponents := list "operators" "vault" "mongodb-operator" "mongodb-instance" "mongodb" "mas" "grafana" "all" -}}
 {{- if not (has .Values.component $validComponents) -}}
-{{- fail (printf "component is '%v' — must be one of: operators, vault, mongodb, mas, grafana, all" .Values.component) -}}
+{{- fail (printf "component is '%v' — must be one of: operators, vault, mongodb-operator, mongodb-instance, mongodb, mas, grafana, all" .Values.component) -}}
 {{- end -}}
 
 {{- /* 2. Identity must be set. Empty clusterId/instanceId build a broken Vault path

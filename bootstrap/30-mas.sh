@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # 30 — deploy IBM MAS (the account-root, which fans out into the whole MAS tree).
-# REFUSES to run until its prerequisites are met: MongoDB Running + (if a token is available)
-# the Vault preflight passes. This is what replaces installStage — the dependency is enforced,
+# REFUSES to run until its prerequisites are met: MongoDB Running + the read-only
+# Vault preflight passes. This is what replaces installStage — the dependency is enforced,
 # not assumed. Set ALLOW_UNVERIFIED=true to bypass the prechecks (not recommended).
 source "$(cd "$(dirname "$0")" && pwd)/lib-bootstrap.sh"
 resolve_env "${1:-}"; require_cluster
@@ -17,12 +17,8 @@ if [[ "${ALLOW_UNVERIFIED:-false}" != "true" ]]; then
   [[ "$phase" == "Running" ]] || die "MongoDB is '${phase:-absent}', not Running — run ./bootstrap/20-mongodb.sh $ENV first (or ALLOW_UNVERIFIED=true)"
 
   say "precheck 2/2: Vault secrets present"
-  if [[ -n "${VAULT_ROOT_TOKEN:-}" ]]; then
-    "$ROOT/bootstrap/12-vault-verify.sh" "$ENV" >/dev/null \
-      || die "Vault preflight failed — run ./bootstrap/12-vault-verify.sh $ENV and seed the gaps"
-  else
-    say "NOTE: VAULT_ROOT_TOKEN not set — skipping the Vault precheck (run 12-vault-verify.sh yourself)"
-  fi
+  "$ROOT/bootstrap/12-vault-verify.sh" "$ENV" >/dev/null \
+    || die "Vault preflight failed — run ./bootstrap/12-vault-verify.sh $ENV and seed the gaps"
 fi
 
 apply_component mas

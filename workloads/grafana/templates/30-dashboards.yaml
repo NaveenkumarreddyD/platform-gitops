@@ -1,4 +1,7 @@
 {{- range .Values.dashboards }}
+{{- if not (or .url .gnetId .json) }}
+{{- fail (printf "dashboard %q must define url, a positive gnetId, or json" .name) }}
+{{- end }}
 apiVersion: grafana.integreatly.org/v1beta1
 kind: GrafanaDashboard
 metadata:
@@ -11,6 +14,9 @@ spec:
   url: {{ .url | quote }}
 {{- else if .gnetId }}
   grafanaCom: { id: {{ .gnetId }} }
+{{- else if .json }}
+  json: |
+{{ .json | nindent 4 }}
 {{- end }}
 ---
 {{- end }}

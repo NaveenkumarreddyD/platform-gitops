@@ -1,8 +1,8 @@
-# MongoDB Community Operator (independent component: ./bootstrap/20-mongodb.sh <env>).
-{{- if has .Values.component (list "mongodb" "all") }}
+# MongoDB Controllers for Kubernetes Operator. The bootstrap selects a chart
+# version compatible with the live OpenShift release before creating this app.
+{{- if has .Values.component (list "mongodb-operator" "mongodb" "all") }}
 ---
-# MongoDB Community Operator the IBM way: the operator's own Helm chart (creates the
-# mongodb-kubernetes-operator deployment), NOT OLM. Watches the dedicated mongo namespace.
+# Install the vendor operator directly from MongoDB's official Helm repository.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
@@ -22,14 +22,17 @@ spec:
     chart: {{ .Values.mongoOperator.chart }}
     targetRevision: {{ .Values.mongoOperator.version | quote }}
     helm:
-      releaseName: mongodb-community-operator
+      releaseName: mongodb-kubernetes-operator
       values: |
-        community-operator-crds: { enabled: true }
-        operator: { watchNamespace: {{ include "gitops.mongoNs" . }} }
-        mongodb:
-          name: {{ .Values.mongoImage.name | quote }}
-          repo: {{ .Values.mongoImage.repo | quote }}
-          imageType: {{ .Values.mongoImage.imageType | quote }}
+        namespace: {{ include "gitops.mongoNs" . }}
+        managedSecurityContext: true
+        operator:
+          watchedResources:
+            - mongodbcommunity
+          createOperatorServiceAccount: true
+          createResourcesServiceAccountsAndRoles: true
+          webhook:
+            registerConfiguration: true
   syncPolicy:
     automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:

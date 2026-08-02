@@ -1,27 +1,70 @@
 #!/usr/bin/env bash
-# 20 — deploy MongoDB (operator + dedicated instance). Independent component.
+# 20 — deploy MongoDB operator, wait for it, then deploy the dedicated instance.
 # Reads mongo-ca / mongo / sls-mongo from Vault via AVP, so Vault must be seeded first.
 source "$(cd "$(dirname "$0")" && pwd)/lib-bootstrap.sh"
 resolve_env "${1:-}"; require_cluster
 MONGO_NS="$(env_mongo_ns)"
+MONGO_RESOURCE="$(env_instance)-mongo"
 
 # MongoDB's TLS uses a cert-manager Issuer + Certificate — the CRDs must exist first.
 oc get crd certificates.cert-manager.io >/dev/null 2>&1 \
   || die "cert-manager CRD (certificates.cert-manager.io) not found — run ./bootstrap/05-operators.sh $ENV first"
 
-# Guard: the CA/creds must be in Vault or the MongoDB CR never becomes Ready.
-if [[ -n "${VAULT_ROOT_TOKEN:-}" ]]; then
-  vault_exec "$VAULT_ROOT_TOKEN" "vault kv get -field=tls_crt_b64 '$(vault_path)/mongo-ca'" >/dev/null 2>&1 \
-    || die "Vault path $(vault_path)/mongo-ca missing — run ./bootstrap/12-vault-verify.sh $ENV first"
-else
-  say "NOTE: VAULT_ROOT_TOKEN not set — skipping the Vault precheck (run 12-vault-verify.sh yourself)"
-fi
+# Guard: all AVP inputs must exist before either application is created.
+"$ROOT/bootstrap/12-vault-verify.sh" "$ENV" >/dev/null \
+  || die "Vault preflight failed — run ./bootstrap/12-vault-verify.sh $ENV and seed the gaps"
 
-apply_component mongodb
+# MongoDB publishes an explicit OpenShift/operator compatibility matrix. Select
+# the latest chart series listed for the cluster instead of carrying one global pin.
+OCP_VERSION="$(oc get clusterversion version -o jsonpath='{.status.desired.version}' 2>/dev/null)"
+OCP_MINOR="$(printf '%s' "$OCP_VERSION" | awk -F. '{print $1 "." $2}')"
+case "$OCP_MINOR" in
+  4.17|4.18) COMPATIBLE_OPERATOR_VERSION="1.4.0" ;;
+  4.19)      COMPATIBLE_OPERATOR_VERSION="1.6.1" ;;
+  4.20)      COMPATIBLE_OPERATOR_VERSION="1.8.0" ;;
+  4.21)      COMPATIBLE_OPERATOR_VERSION="1.9.1" ;;
+  *) die "OpenShift '$OCP_VERSION' is not in the supported MongoDB operator matrix used by this repo (4.17-4.21)" ;;
+esac
+if [[ -n "${MONGO_OPERATOR_VERSION:-}" && "$MONGO_OPERATOR_VERSION" != "$COMPATIBLE_OPERATOR_VERSION" ]]; then
+  die "MONGO_OPERATOR_VERSION=$MONGO_OPERATOR_VERSION does not match the official version for OpenShift $OCP_MINOR ($COMPATIBLE_OPERATOR_VERSION)"
+fi
+MONGO_OPERATOR_VERSION="${MONGO_OPERATOR_VERSION:-$COMPATIBLE_OPERATOR_VERSION}"
+say "OpenShift $OCP_VERSION -> MongoDB Controllers for Kubernetes Operator $MONGO_OPERATOR_VERSION"
+
+apply_component mongodb-operator --set-string mongoOperator.version="$MONGO_OPERATOR_VERSION"
+
+say "waiting for the MongoDB operator CRD and deployment (up to 10m)"
+for i in $(seq 1 60); do
+  operator_image="$(oc get deployment mongodb-kubernetes-operator -n "$MONGO_NS" \
+    -o jsonpath='{.spec.template.spec.containers[0].image}' 2>/dev/null || true)"
+  if oc get crd mongodbcommunity.mongodbcommunity.mongodb.com >/dev/null 2>&1 \
+     && [[ "$operator_image" == *":$MONGO_OPERATOR_VERSION" ]]; then
+    break
+  fi
+  sleep 10
+done
+oc get crd mongodbcommunity.mongodbcommunity.mongodb.com >/dev/null 2>&1 \
+  || die "MongoDBCommunity CRD was not registered — inspect application/mongodb-operator"
+[[ "${operator_image:-}" == *":$MONGO_OPERATOR_VERSION" ]] \
+  || die "MongoDB operator $MONGO_OPERATOR_VERSION was not deployed — current image: ${operator_image:-absent}"
+oc wait --for=condition=Established crd/mongodbcommunity.mongodbcommunity.mongodb.com --timeout=3m
+oc rollout status deployment/mongodb-kubernetes-operator -n "$MONGO_NS" --timeout=10m \
+  || die "MongoDB operator did not become Available — inspect its pod logs in $MONGO_NS"
+
+apply_component mongodb-instance
+
+say "waiting for MongoDB resource $MONGO_RESOURCE to appear (up to 10m)"
+for i in $(seq 1 60); do
+  oc get mongodbcommunity "$MONGO_RESOURCE" -n "$MONGO_NS" >/dev/null 2>&1 && break
+  sleep 10
+done
+oc get mongodbcommunity "$MONGO_RESOURCE" -n "$MONGO_NS" >/dev/null 2>&1 \
+  || die "MongoDB resource was not created — inspect application/mongodb"
 
 say "waiting for MongoDB to report Running in $MONGO_NS (up to 15m)…"
-oc -n "$MONGO_NS" wait --for=jsonpath='{.status.phase}'=Running mongodbcommunity --all --timeout=15m 2>/dev/null \
-  || say "MongoDB not Running yet — check: oc get mongodbcommunity -n $MONGO_NS  (RUNBOOK: MongoDB not Running)"
+oc -n "$MONGO_NS" wait --for=jsonpath='{.status.phase}'=Running \
+  "mongodbcommunity/$MONGO_RESOURCE" --timeout=15m \
+  || die "MongoDB did not reach Running — check: oc get mongodbcommunity -n $MONGO_NS"
 oc get mongodbcommunity,pods -n "$MONGO_NS" 2>/dev/null || true
 
 say "done. NEXT: ./bootstrap/30-mas.sh $ENV   (only once MongoDB is Running)"

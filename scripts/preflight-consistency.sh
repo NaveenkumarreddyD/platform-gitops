@@ -60,7 +60,7 @@ echo
 # mongo.namespace is platform-only (not in the config repo). It cannot be cross-checked
 # here, but it MUST equal the namespace baked into the seeded mongo#host in Vault.
 echo "REMINDER: platform mongo.namespace='$P_MONGONS' — the seeded Vault 'mongo#host'"
-echo "          (INSTALL.md section 6) must use this same namespace."
+echo "          (INSTALL.md section 7) must use this same namespace."
 echo
 if [[ "$fail" == 0 ]]; then
   echo "PASS — account/cluster/instance are consistent across repos."

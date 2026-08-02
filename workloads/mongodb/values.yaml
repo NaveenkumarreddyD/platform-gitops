@@ -1,7 +1,7 @@
 # DEDICATED Mongo for this instance (NOT the shared mas-mongo-ce). Defaults overridden by the
 # gitops mongodb-ce app via HELM_VALUES. Aligned to ibm.mas_devops mongodb role (community).
 namespace: mongo-gitops
-resource: drgitopsapp-mongo
+resource: drrocapp-mongo
 members: 3                       # ibm default mongodb_replicas=3 (3 data + 3 logs PVCs)
 mongodbVersion: "7.0.23"         # spec.version (semver for the operator); 6->7 is MAJOR — fresh install only.
 # Full mongod image, pinned on the container. Required: the community operator only appends the
@@ -18,9 +18,9 @@ resources:
 adminUser: admin
 slsmongoUser: slsmongo
 createSccBinding: false          # platform root owns this before the operator app starts
-adminPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/mongo#password>"
-slsmongoPasswordPath: "<path:secret/data/mas/drroc4/drgitopsapp/sls-mongo#password>"
+adminPasswordPath: "<path:secret/data/drroc4/drroc4/drrocapp/mongo#password>"
+slsmongoPasswordPath: "<path:secret/data/drroc4/drroc4/drrocapp/sls-mongo#password>"
 # Pinned Mongo CA (base64 PEM), generated once and manually stored in Vault.
 # The platform Application overrides these example paths for each environment.
-mongoCaCert: "<path:secret/data/mas/drroc4/drgitopsapp/mongo-ca#tls_crt_b64>"
-mongoCaKey: "<path:secret/data/mas/drroc4/drgitopsapp/mongo-ca#tls_key_b64>"
+mongoCaCert: "<path:secret/data/drroc4/drroc4/drrocapp/mongo-ca#tls_crt_b64>"
+mongoCaKey: "<path:secret/data/drroc4/drroc4/drrocapp/mongo-ca#tls_key_b64>"

@@ -25,7 +25,10 @@ hr
 # --- Vault (seal state across nodes) ---
 echo "VAULT"
 for p in vault-0 vault-1 vault-2; do
-  s="$(oc exec -n "$VAULT_NS" "$p" -- sh -c 'export VAULT_ADDR=http://127.0.0.1:8200; vault status -format=json' 2>/dev/null \
+  s="$(oc exec -n "$VAULT_NS" "$p" -- env \
+       VAULT_ADDR=https://127.0.0.1:8200 \
+       VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
+       VAULT_TLS_SERVER_NAME=vault.vault.svc vault status -format=json 2>/dev/null \
        | grep -oE '"sealed": *(true|false)' | sed 's/.*: *//')"
   [[ -n "$s" ]] && printf "  %-8s sealed=%s\n" "$p" "$s" || printf "  %-8s (not present)\n" "$p"
 done

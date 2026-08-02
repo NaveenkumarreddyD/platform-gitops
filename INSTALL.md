@@ -8,7 +8,7 @@ account, so step 6 is identical for every env.
 ## 1. Prerequisites
 
 - Tools: `oc`, `helm`, `git`, `openssl`, `jq`.
-- Cluster: OpenShift GitOps installed (`openshift-gitops`), `isilon` storage class, image pull +
+- Cluster: OpenShift 4.17-4.21, OpenShift GitOps installed (`openshift-gitops`), `isilon` storage class, image pull +
   egress to GitHub/`get.helm.sh` (or use the internal-image AVP patch), DNS for
   `vault.apps.drroc4.lac1.biz`, Oracle reachable.
 - All three repos pushed to GitLab on the pinned branches:
@@ -72,7 +72,7 @@ before `00-prereqs.sh`.)
 ```
 
 (Cluster already has cert-manager? Set `enable.certManager: false` in
-`gitops/envs/drroc4/values.yaml` and skip this step.)
+`gitops/envs/drroc4/values.yaml`; still run this step so it verifies the existing CRDs.)
 
 ## 5. Deploy Vault, then init + unseal
 
@@ -85,7 +85,10 @@ Initialize once (the output is the only copy of the root token + unseal keys):
 
 ```bash
 umask 077
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
+oc exec -n vault vault-0 -- env \
+  VAULT_ADDR=https://127.0.0.1:8200 \
+  VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
+  VAULT_TLS_SERVER_NAME=vault.vault.svc \
   vault operator init -key-shares=5 -key-threshold=3 -format=json > "$HOME/vault-init-drroc4.json"
 
 export VAULT_ROOT_TOKEN="$(jq -r '.root_token'     "$HOME/vault-init-drroc4.json")"
@@ -100,12 +103,16 @@ Unseal all pods (retries while followers join Raft):
 for pod in vault-0 vault-1 vault-2; do
   echo "== $pod =="
   for attempt in $(seq 1 30); do
-    if oc exec -n vault "$pod" -- env VAULT_ADDR=http://127.0.0.1:8200 \
+    if oc exec -n vault "$pod" -- env VAULT_ADDR=https://127.0.0.1:8200 \
+         VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
+         VAULT_TLS_SERVER_NAME=vault.vault.svc \
          vault status -format=json 2>/dev/null | grep -qE '"sealed":[[:space:]]*false'; then
       echo "  unsealed"; break
     fi
     for key in "$UNSEAL_KEY_1" "$UNSEAL_KEY_2" "$UNSEAL_KEY_3"; do
-      oc exec -n vault "$pod" -- env VAULT_ADDR=http://127.0.0.1:8200 \
+      oc exec -n vault "$pod" -- env VAULT_ADDR=https://127.0.0.1:8200 \
+        VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
+        VAULT_TLS_SERVER_NAME=vault.vault.svc \
         vault operator unseal "$key" >/dev/null 2>&1 || true
     done
     sleep 5
@@ -118,7 +125,6 @@ Move `vault-init-drroc4.json` to secure escrow — never commit it or store it i
 ## 6. Configure Vault auth
 
 ```bash
-oc adm policy add-cluster-role-to-user system:auth-delegator -z vault -n vault
 ./bootstrap/11-vault-config.sh drroc4     # kv-v2 + k8s auth + policies + roles (uses $VAULT_ROOT_TOKEN)
 ```
 
@@ -142,6 +148,7 @@ Optional exports (before running it):
 | `MAS_TLS_CRT_FILE` `MAS_TLS_KEY_FILE` `MAS_CA_FILE` | provide a real MAS public cert; if unset, the script seeds a **self-signed placeholder** (Manage requires a cert — it can't self-sign) |
 | `MONGO_CA_CRT_FILE` `MONGO_CA_KEY_FILE` | bring your own Mongo CA instead of generating one |
 | `MONGO_HOST` / `MAS_DOMAIN` | override the derived Mongo host / MAS domain |
+| `ROTATE_MONGO_PASSWORDS=true` | deliberately replace both Mongo passwords; omitted means preserve existing values |
 
 It does **not** seed `dro`/`sls` — the patched IBM Jobs write those in step 9. `certs/public` is
 **always** seeded (real cert if you export `MAS_TLS_*`, otherwise a self-signed placeholder). To swap
@@ -151,13 +158,13 @@ in the real cert later, re-run the seed with `MAS_TLS_*`/`MAS_CA_FILE` exported,
 Verify, then move the PKI to escrow:
 
 ```bash
-./bootstrap/12-vault-verify.sh drroc4     # must print PASS
+./bootstrap/12-vault-verify.sh drroc4     # must print PASS; uses read-only Kubernetes auth
 ```
 
 ## 8. Deploy MongoDB
 
 ```bash
-./bootstrap/20-mongodb.sh drroc4          # wait until phase is Running
+./bootstrap/20-mongodb.sh drroc4          # selects the operator for the live OCP version, then waits for Running
 ```
 
 ## 9. Deploy MAS
@@ -177,10 +184,14 @@ write SLS/DRO registration into Vault. Don't hand-create those resources.
 - The MAS/Manage routes serve the expected public cert and a login works.
 
 ```bash
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-  VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv get secret/drroc4/drroc4/dro
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-  VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv get secret/drroc4/drroc4/drrocapp/sls
+oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 \
+  VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
+  VAULT_TLS_SERVER_NAME=vault.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+  vault kv get secret/drroc4/drroc4/dro
+oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 \
+  VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
+  VAULT_TLS_SERVER_NAME=vault.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+  vault kv get secret/drroc4/drroc4/drrocapp/sls
 ```
 
 After install, stop using the root token for day-2 work and keep the unseal shares separated.

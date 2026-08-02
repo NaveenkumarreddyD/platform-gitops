@@ -9,17 +9,12 @@
 # Vault on every (re)deploy and always reattaches to the same data.
 #
 # Run ONCE, after Manage is first Ready. Requires: export VAULT_ROOT_TOKEN=...
-set -euo pipefail
-ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-VAULT_NS="${VAULT_NS:-vault}"
-ENV="${1:?usage: capture-manage-crypto.sh <env>}"
-VALUES="$ROOT/gitops/envs/$ENV/values.yaml"; COMMON="$ROOT/gitops/envs/$ENV/common.yaml"
+source "$(cd "$(dirname "$0")/../bootstrap" && pwd)/lib-bootstrap.sh"
+resolve_env "${1:-}"; require_cluster
 : "${VAULT_ROOT_TOKEN:?export VAULT_ROOT_TOKEN before running}"
-INSTANCE="$(grep -E '^instanceId:' "$VALUES" | sed -E 's/.*: *//; s/[ "].*//')"
-ACCT="$(grep -oE 'account: *\{ *id: *[A-Za-z0-9._-]+' "$COMMON" | head -1 | sed -E 's/.*id: *//')"; ACCT="${ACCT:-mas}"
-CLUSTER="$(grep -E '^clusterId:' "$COMMON" | sed -E 's/.*: *//; s/[ "].*//')"
+INSTANCE="$(env_instance)"
 MANAGE_NS="mas-${INSTANCE}-manage"
-VPATH="secret/${ACCT}/${CLUSTER}/${INSTANCE}/manage-crypto"
+VPATH="$(vault_path)/manage-crypto"
 
 SEC="$(oc get secret -n "$MANAGE_NS" -o name 2>/dev/null | grep -E 'manage-encryptionsecret' | head -1)"
 [[ -n "$SEC" ]] || { echo "ERROR: no *-manage-encryptionsecret in $MANAGE_NS — is Manage installed and Ready?" >&2; exit 1; }
@@ -35,7 +30,6 @@ cx="$(oc get "$SEC" -n "$MANAGE_NS" -o jsonpath="{.data.$CX_FIELD}" 2>/dev/null 
 [[ -n "$ck" && -n "$cx" ]] || { echo "ERROR: fields $CK_FIELD / $CX_FIELD not found — re-run with CRYPTO_KEY_FIELD=<name> CRYPTOX_KEY_FIELD=<name> from the list above." >&2; exit 1; }
 
 echo ">> writing $VPATH (cryptoKey, cryptoxKey) to Vault"
-oc exec -i -n "$VAULT_NS" vault-0 -- sh -c \
-  "export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='$VAULT_ROOT_TOKEN'; vault kv put '$VPATH' cryptoKey='$ck' cryptoxKey='$cx'" >/dev/null
+vault_exec "$VAULT_ROOT_TOKEN" kv put "$VPATH" cryptoKey="$ck" cryptoxKey="$cx" >/dev/null
 echo ">> done. Now set MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=false in the config env, re-render,"
 echo "   commit + push. The MAS layer is now redeployable — it reads these keys from Vault."

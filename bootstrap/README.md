@@ -9,8 +9,8 @@ There is no app-of-apps and no `installStage`; ordering is enforced by the scrip
 10-vault.sh <env>         deploy Vault           → then init + unseal (manual, INSTALL.md §4)
 11-vault-config.sh <env>  kv-v2 + k8s auth + policies + roles   (needs VAULT_ROOT_TOKEN)
 seed-secrets.sh <env>     seed static secrets from EXPORTED vars (derives all Vault paths)
-12-vault-verify.sh <env>  READ-ONLY: assert every required secret is seeded
-20-mongodb.sh <env>       deploy MongoDB         → waits for Running (needs cert-manager CRDs)
+12-vault-verify.sh <env>  READ-ONLY Kubernetes auth: assert every required secret is seeded
+20-mongodb.sh <env>       select compatible operator → wait for CRD → deploy MongoDB → wait Running
 30-mas.sh <env>           deploy MAS             → refuses unless Mongo Running + Vault verified
 ```
 
@@ -20,8 +20,9 @@ stable-v1, cert-manager-operator namespace). Add more OLM operators via the reus
 `workloads/operators` chart — see `gitops/values.yaml` (`certManagerOperator`, `grafanaOperator`).
 
 Seeding the actual secret material (§V.4) stays manual — the values are per-cluster and the
-Vault unseal shares must never live in the cluster. `../scripts/status.sh <env>` shows all
-three components at a glance.
+Vault unseal shares must never live in the cluster. The seed script preserves existing MongoDB
+passwords and generated certificates on rerun; rotation requires `ROTATE_MONGO_PASSWORDS=true`.
+`../scripts/status.sh <env>` shows all four core components at a glance.
 
 Create repository credentials directly in OpenShift; the committed file under
 `00-prereqs/repo-creds/` is an example and must never contain a real token.

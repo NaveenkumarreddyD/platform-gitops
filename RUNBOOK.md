@@ -9,7 +9,7 @@ oc get applications -n openshift-gitops
 oc get pods -n vault
 oc get pods -n mongo-gitops
 oc get jobs -n ibm-software-central
-oc get jobs -n mas-drgitopsapp-sls
+oc get jobs -n mas-drrocapp-sls
 oc get licenseservices.sls.ibm.com -A
 oc get suites.core.mas.ibm.com -A
 oc get workspaces.core.mas.ibm.com -A
@@ -17,7 +17,7 @@ oc get mongocfgs,slscfgs,jdbccfgs,bascfgs.config.mas.ibm.com -A
 oc get manageapps,manageworkspaces -A
 ```
 
-## The three independent components
+## The four core independent components
 
 There is no app-of-apps and no `installStage`. Each component is a standalone Argo CD
 Application, deployed by its own script and coupled only through Vault secret paths:
@@ -38,10 +38,10 @@ oc get crd | grep cert-manager.io          # certificates.cert-manager.io must e
 oc get pods -n cert-manager                 # the operator deploys cert-manager here
 ```
 
-If the CSV is `Installing` for a long time, approve a pending InstallPlan (grafana-operator uses
-`Manual` approval by design). Once `certificates.cert-manager.io` exists, re-run `20-mongodb.sh`.
+If Grafana is enabled, its pinned operator uses `Manual` InstallPlan approval by design; the
+operator script prints the exact approval command. Once the requested CRDs exist, rerun the step.
 
-One-glance health of all three:
+One-glance health of all four:
 
 ```bash
 ./scripts/status.sh <env>
@@ -53,7 +53,7 @@ redeploy any one without touching the others — e.g. `oc delete application ibm
 then re-run `30-mas.sh` rebuilds only MAS. Force an immediate Git refresh of one component:
 
 ```bash
-oc annotate application <vault|mongodb|ibm-mas-account-root> -n openshift-gitops \
+oc annotate application <vault|mongodb-operator|mongodb|ibm-mas-account-root> -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ```
 
@@ -62,9 +62,9 @@ oc annotate application <vault|mongodb|ibm-mas-account-root> -n openshift-gitops
 Check every node:
 
 ```bash
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 vault status
-oc exec -n vault vault-1 -- env VAULT_ADDR=http://127.0.0.1:8200 vault status
-oc exec -n vault vault-2 -- env VAULT_ADDR=http://127.0.0.1:8200 vault status
+oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault.vault.svc vault status
+oc exec -n vault vault-1 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault.vault.svc vault status
+oc exec -n vault vault-2 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault.vault.svc vault status
 ```
 
 An authorized operator must apply three different unseal shares to each sealed pod, as
@@ -86,12 +86,12 @@ Verify in Vault:
 - The namespace is `openshift-gitops`.
 - The role includes policy `mas-gitops`.
 - The requested path and field exist with exactly the same spelling and scope.
-- Vault is unsealed and `vault-active.vault.svc.cluster.local:8200` is reachable.
+- Vault is unsealed and `https://vault.vault.svc.cluster.local:8200` is reachable with the OpenShift service CA.
 
 ## MongoDB is not Running
 
 ```bash
-oc get mongodbcommunity drgitopsapp-mongo -n mongo-gitops -o yaml
+oc get mongodbcommunity drrocapp-mongo -n mongo-gitops -o yaml
 oc get pods,pvc,certificate,secret -n mongo-gitops
 oc logs deployment/mongodb-kubernetes-operator -n mongo-gitops --tail=200
 oc get events -n mongo-gitops --sort-by=.lastTimestamp
@@ -128,29 +128,29 @@ Vault role `mas-gitops-writer` must bind `postsync-ibm-dro-update-sm-sa` in
 
 ```bash
 oc get licenseservices.sls.ibm.com -A
-oc get configmap sls-suite-registration -n mas-drgitopsapp-sls
-oc get jobs -n mas-drgitopsapp-sls | grep postsync-ibm-sls-update-sm
-SLS_JOB="$(oc get jobs -n mas-drgitopsapp-sls -o name | grep postsync-ibm-sls-update-sm | tail -1)"
-oc logs -n mas-drgitopsapp-sls "$SLS_JOB" --all-containers --tail=200
+oc get configmap sls-suite-registration -n mas-drrocapp-sls
+oc get jobs -n mas-drrocapp-sls | grep postsync-ibm-sls-update-sm
+SLS_JOB="$(oc get jobs -n mas-drrocapp-sls -o name | grep postsync-ibm-sls-update-sm | tail -1)"
+oc logs -n mas-drrocapp-sls "$SLS_JOB" --all-containers --tail=200
 ```
 
 The completed Job must write:
 
 ```text
-secret/drroc4/drroc4/drgitopsapp/sls
+secret/drroc4/drroc4/drrocapp/sls
 fields: registration_key, url, ca.crt
 ```
 
 Vault role `mas-gitops-writer` must bind `postsync-ibm-sls-update-sm-sa` in
-`mas-drgitopsapp-sls`.
+`mas-drrocapp-sls`.
 
 ## A MAS system configuration is not Ready
 
 ```bash
-oc describe mongocfg drgitopsapp-mongo-system -n mas-drgitopsapp-core
-oc describe slscfg drgitopsapp-sls-system -n mas-drgitopsapp-core
-oc describe jdbccfg drgitopsapp-jdbc-system -n mas-drgitopsapp-core
-oc describe bascfg drgitopsapp-bas-system -n mas-drgitopsapp-core
+oc describe mongocfg drrocapp-mongo-system -n mas-drrocapp-core
+oc describe slscfg drrocapp-sls-system -n mas-drrocapp-core
+oc describe jdbccfg drrocapp-jdbc-system -n mas-drrocapp-core
+oc describe bascfg drrocapp-bas-system -n mas-drrocapp-core
 ```
 
 Common checks:
@@ -170,11 +170,11 @@ oc annotate application <application-name> -n openshift-gitops \
 ## Certificate failure
 
 ```bash
-oc get secret drgitopsapp-cert-public -n mas-drgitopsapp-core -o yaml
-oc get secret drgitopsapp-drgitopswks-cert-public-81 -n mas-drgitopsapp-manage -o yaml
-oc describe suite drgitopsapp -n mas-drgitopsapp-core
-oc get routes -n mas-drgitopsapp-core
-oc get routes -n mas-drgitopsapp-manage
+oc get secret drrocapp-cert-public -n mas-drrocapp-core -o yaml
+oc get secret drrocapp-drrocwks-cert-public-81 -n mas-drrocapp-manage -o yaml
+oc describe suite drrocapp -n mas-drrocapp-core
+oc get routes -n mas-drrocapp-core
+oc get routes -n mas-drrocapp-manage
 ```
 
 Each Vault `*_b64` field must decode once to PEM. Confirm locally without printing the
@@ -190,11 +190,11 @@ Manage certificate Secret. No custom certificate Application should exist.
 ## Suite or Manage is not Ready
 
 ```bash
-oc describe suite drgitopsapp -n mas-drgitopsapp-core
-oc get manageapp,manageworkspace -n mas-drgitopsapp-manage
-oc describe manageapp drgitopsapp -n mas-drgitopsapp-manage
-oc describe manageworkspace drgitopsapp-drgitopswks -n mas-drgitopsapp-manage
-oc get pods -n mas-drgitopsapp-manage
+oc describe suite drrocapp -n mas-drrocapp-core
+oc get manageapp,manageworkspace -n mas-drrocapp-manage
+oc describe manageapp drrocapp -n mas-drrocapp-manage
+oc describe manageworkspace drrocapp-drrocwks -n mas-drrocapp-manage
+oc get pods -n mas-drrocapp-manage
 ```
 
 Do not troubleshoot Manage until all four system configurations and the Suite are Ready.
@@ -207,8 +207,10 @@ Take an encrypted, access-controlled Raft snapshot after initial seed and after 
 secret changes:
 
 ```bash
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-  VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault operator raft snapshot save /tmp/drroc4.snap
+oc exec -n vault vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 \
+  VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
+  VAULT_TLS_SERVER_NAME=vault.vault.svc VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
+  vault operator raft snapshot save /tmp/drroc4.snap
 oc cp vault/vault-0:/tmp/drroc4.snap "$HOME/drroc4-vault.snap"
 oc exec -n vault vault-0 -- rm -f /tmp/drroc4.snap
 ```

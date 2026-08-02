@@ -9,36 +9,29 @@ resolve_env "${1:-}"; require_cluster
 INSTANCE="$(env_instance)"; SLS_NS="mas-${INSTANCE}-sls"; DRO_NS="ibm-software-central"
 
 say "enabling kv-v2 at secret/ and kubernetes auth (idempotent)"
-vault_exec "$VAULT_ROOT_TOKEN" "vault secrets enable -path=secret kv-v2 2>/dev/null || true"
-vault_exec "$VAULT_ROOT_TOKEN" "vault auth enable kubernetes 2>/dev/null || true"
-vault_exec "$VAULT_ROOT_TOKEN" '
-  vault write auth/kubernetes/config \
-    kubernetes_host="https://kubernetes.default.svc" \
-    token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token \
-    kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt'
+vault_exec "$VAULT_ROOT_TOKEN" secrets enable -path=secret kv-v2 2>/dev/null || true
+vault_exec "$VAULT_ROOT_TOKEN" auth enable kubernetes 2>/dev/null || true
+vault_exec "$VAULT_ROOT_TOKEN" write auth/kubernetes/config \
+  kubernetes_host="https://kubernetes.default.svc" \
+  token_reviewer_jwt=@/var/run/secrets/kubernetes.io/serviceaccount/token \
+  kubernetes_ca_cert=@/var/run/secrets/kubernetes.io/serviceaccount/ca.crt
 
 say "writing policies mas-gitops (AVP read) and mas-gitops-writer (harvest)"
-oc exec -i -n "$VAULT_NS" vault-0 -- sh -c \
-  "export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='$VAULT_ROOT_TOKEN'; vault policy write mas-gitops -" \
+vault_exec_stdin "$VAULT_ROOT_TOKEN" policy write mas-gitops - \
   < "$ROOT/vault-auth/mas-gitops-policy.hcl"
-oc exec -i -n "$VAULT_NS" vault-0 -- sh -c \
-  "export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='$VAULT_ROOT_TOKEN'; vault policy write mas-gitops-writer -" \
+vault_exec_stdin "$VAULT_ROOT_TOKEN" policy write mas-gitops-writer - \
   < "$ROOT/vault-auth/mas-gitops-writer-policy.hcl"
 
 # Bind the ACTUAL repo-server SA. OpenShift GitOps often leaves serviceAccountName unset on the
 # repo-server deployment, so the pod runs as the namespace 'default' SA — hardcoding any other name
 # causes Vault 403 "service account not authorized". Read it from the running pod; fall back to default.
-REPO_SA="$(oc get pods -n "$ARGO_NS" -l app.kubernetes.io/name=openshift-gitops-repo-server \
-  -o jsonpath='{.items[0].spec.serviceAccountName}' 2>/dev/null)"
-[[ -n "$REPO_SA" ]] || REPO_SA="$(oc get deployment openshift-gitops-repo-server -n "$ARGO_NS" \
-  -o jsonpath='{.spec.template.spec.serviceAccountName}' 2>/dev/null)"
-REPO_SA="${REPO_SA:-default}"
+REPO_SA="$(repo_server_sa)"
 say "binding roles: mas-gitops → SA '$REPO_SA'; mas-gitops-writer → SLS/DRO harvest SAs"
-vault_exec "$VAULT_ROOT_TOKEN" "vault write auth/kubernetes/role/mas-gitops \
+vault_exec "$VAULT_ROOT_TOKEN" write auth/kubernetes/role/mas-gitops \
   bound_service_account_names=$REPO_SA \
-  bound_service_account_namespaces=$ARGO_NS policies=mas-gitops ttl=20m"
-vault_exec "$VAULT_ROOT_TOKEN" "vault write auth/kubernetes/role/mas-gitops-writer \
+  bound_service_account_namespaces=$ARGO_NS policies=mas-gitops ttl=20m
+vault_exec "$VAULT_ROOT_TOKEN" write auth/kubernetes/role/mas-gitops-writer \
   bound_service_account_names=postsync-ibm-sls-update-sm-sa,postsync-ibm-dro-update-sm-sa \
-  bound_service_account_namespaces=$SLS_NS,$DRO_NS policies=mas-gitops-writer ttl=20m"
+  bound_service_account_namespaces=$SLS_NS,$DRO_NS policies=mas-gitops-writer ttl=20m
 
 say "done. NEXT: seed secrets (INSTALL.md §V.4), then ./bootstrap/12-vault-verify.sh $ENV"
