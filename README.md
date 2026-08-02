@@ -8,8 +8,8 @@ bootstrap scripts and administer Vault manually while it is the temporary backen
 
 | Repository | Responsibility | Branch |
 |---|---|---|
-| `platform-gitops` | Operators (cert-manager), Vault, MongoDB, bootstrap, IBM account root | `mas-vault-deploy` |
-| `mas-gitops-config` | IBM cluster + instance configuration (per-account) | `mas-vault-deploy` |
+| `platform-gitops` | Operators (cert-manager), Vault, MongoDB, bootstrap, IBM account root | `main` |
+| `mas-gitops-config` | IBM cluster + instance configuration (per-account) | `main` |
 | `ibm-mas-gitops` | IBM release + temporary Vault/JDBC compatibility patch | `8.4.0-vault-patch` |
 
 ## Decoupled components

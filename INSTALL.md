@@ -15,13 +15,13 @@ account, so step 6 is identical for every env.
 
 | Repo | GitLab branch |
 |---|---|
-| `platform-gitops` | `mas-vault-deploy` |
-| `mas-gitops-config` | `mas-vault-deploy` |
+| `platform-gitops` | `main` |
+| `mas-gitops-config` | `main` |
 | `ibm-mas-gitops` | `8.4.0-vault-patch` |
 
 ```bash
-git ls-remote https://gitlab.lac1.biz/gitops/platform-gitops.git  refs/heads/mas-vault-deploy
-git ls-remote https://gitlab.lac1.biz/gitops/mas-gitops-config.git refs/heads/mas-vault-deploy
+git ls-remote https://gitlab.lac1.biz/gitops/platform-gitops.git  refs/heads/main
+git ls-remote https://gitlab.lac1.biz/gitops/mas-gitops-config.git refs/heads/main
 git ls-remote https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git    refs/heads/8.4.0-vault-patch
 ```
 
