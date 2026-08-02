@@ -288,11 +288,17 @@ done
 
 if [[ "$INCLUDE_CRDS" == 1 ]]; then
   say "6b. Delete MAS CRDs (cluster-wide — you passed --include-crds)"
-  for c in $(mas_crds); do
-    oc patch crd "$c" --type merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
-    oc delete crd "$c" --ignore-not-found --wait=false >/dev/null 2>&1 || true
-    echo "  deleted crd/$c"
+  # Two passes: a dying MAS operator can re-register a CRD after the first sweep, so re-sweep
+  # to catch stragglers (e.g. managedeployments.apps.mas.ibm.com).
+  for pass in 1 2; do
+    for c in $(mas_crds); do
+      oc patch crd "$c" --type merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+      oc delete crd "$c" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+      [[ "$pass" == 1 ]] && echo "  deleted crd/$c"
+    done
+    [[ "$pass" == 1 ]] && sleep 5
   done
+  left="$(mas_crds)"; [[ -n "$left" ]] && { echo "  still present (delete manually):"; echo "$left" | sed 's/^/    oc delete crd /'; }
 else
   say "6b. MAS CRDs preserved (re-run with --include-crds to remove them)"
 fi
