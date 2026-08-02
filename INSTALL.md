@@ -1,7 +1,7 @@
 # IBM MAS installation (per cluster)
 
 Run the steps in order. Examples use **drroc4** — for another env, replace `drroc4/drroc4`
-(account/cluster) and `drgitopsapp` (instance). Each env is its own cluster with its own account;
+(account/cluster) and `drrocapp` (instance). Each env is its own cluster with its own account;
 Vault paths are `secret/<account>/<cluster>/[<instance>]/...`. The Vault policy files wildcard the
 account, so step 6 is identical for every env.
 
@@ -143,8 +143,8 @@ Entitlement + license + Oracle JDBC:
 ENTITLEMENT_B64="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' \
   "$(printf 'cp:%s' "$IBM_ENTITLEMENT_KEY" | base64 | tr -d '\r\n')" | base64 | tr -d '\r\n')"
 vkv secret/drroc4/drroc4/entitlement image_pull_secret_b64="$ENTITLEMENT_B64"
-vkv secret/drroc4/drroc4/drgitopsapp/license license_file="$(cat "$LICENSE_FILE")"
-vkv secret/drroc4/drroc4/drgitopsapp/jdbc-system \
+vkv secret/drroc4/drroc4/drrocapp/license license_file="$(cat "$LICENSE_FILE")"
+vkv secret/drroc4/drroc4/drrocapp/jdbc-system \
   username="$JDBC_USER" password="$JDBC_PASS" jdbc_url="$JDBC_URL"
 ```
 
@@ -154,16 +154,16 @@ MongoDB CA (generated once) + credentials:
 umask 077; mkdir -p "$HOME/mas-drroc4-pki"
 openssl genrsa -out "$HOME/mas-drroc4-pki/mongo-ca.key" 4096
 openssl req -x509 -new -nodes -key "$HOME/mas-drroc4-pki/mongo-ca.key" -sha256 -days 3650 \
-  -subj '/CN=drgitopsapp-mongo-ca' -out "$HOME/mas-drroc4-pki/mongo-ca.crt"
+  -subj '/CN=drrocapp-mongo-ca' -out "$HOME/mas-drroc4-pki/mongo-ca.crt"
 MONGO_CA_PEM="$(cat "$HOME/mas-drroc4-pki/mongo-ca.crt")"
 
-vkv secret/drroc4/drroc4/drgitopsapp/mongo-ca \
+vkv secret/drroc4/drroc4/drrocapp/mongo-ca \
   tls_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mongo-ca.crt" | tr -d '\r\n')" \
   tls_key_b64="$(base64 < "$HOME/mas-drroc4-pki/mongo-ca.key" | tr -d '\r\n')"
-vkv secret/drroc4/drroc4/drgitopsapp/mongo \
+vkv secret/drroc4/drroc4/drrocapp/mongo \
   username=admin password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)" \
-  host=drgitopsapp-mongo-svc.mongo-gitops.svc.cluster.local ca.crt="$MONGO_CA_PEM"
-vkv secret/drroc4/drroc4/drgitopsapp/sls-mongo \
+  host=drrocapp-mongo-svc.mongo-gitops.svc.cluster.local ca.crt="$MONGO_CA_PEM"
+vkv secret/drroc4/drroc4/drrocapp/sls-mongo \
   username=slsmongo password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)" ca.crt="$MONGO_CA_PEM"
 ```
 
@@ -173,7 +173,7 @@ your own cert later: set `MAS_MANUAL_CERT_MGMT=true` in `mas-config-repo/envs/<c
 re-render + commit, then seed `certs/public` and hard-refresh:
 
 ```bash
-vkv secret/drroc4/drroc4/drgitopsapp/certs/public \
+vkv secret/drroc4/drroc4/drrocapp/certs/public \
   tls_crt_b64="$(base64 < mas-tls.crt | tr -d '\r\n')" \
   tls_key_b64="$(base64 < mas-tls.key | tr -d '\r\n')" \
   ca_crt_b64="$(base64 < mas-ca.crt   | tr -d '\r\n')"
@@ -212,7 +212,7 @@ write SLS/DRO registration into Vault. Don't hand-create those resources.
 oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
   VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv get secret/drroc4/drroc4/dro
 oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-  VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv get secret/drroc4/drroc4/drgitopsapp/sls
+  VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv get secret/drroc4/drroc4/drrocapp/sls
 ```
 
 After install, stop using the root token for day-2 work and keep the unseal shares separated.
