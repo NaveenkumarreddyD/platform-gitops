@@ -172,7 +172,7 @@ vkv secret/drroc4/drroc4/drgitopsapp/sls-mongo \
   username=slsmongo password="$SLS_MONGO_PW" ca.crt="$MONGO_CA_PEM"
 ```
 
-MAS public certificate (from the supplied PFX):
+MAS public certificate — real cert (from the supplied PFX):
 
 ```bash
 openssl pkcs12 -in /secure/path/mas-public.pfx -clcerts -nokeys -out "$HOME/mas-drroc4-pki/mas-tls.crt"
@@ -183,6 +183,23 @@ vkv secret/drroc4/drroc4/drgitopsapp/certs/public \
   tls_key_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.key" | tr -d '\r\n')" \
   ca_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-ca.crt" | tr -d '\r\n')"
 ```
+
+**No real cert yet? Self-signed placeholder** (browsers warn until you swap it; Manage owns its
+own cert, so it's unaffected). Only the core/Suite cert is self-signed:
+
+```bash
+MAS_DOMAIN=drgitopsapp.apps.drroc4.lac1.biz
+openssl req -x509 -new -nodes -newkey rsa:4096 -sha256 -days 825 \
+  -keyout "$HOME/mas-drroc4-pki/mas-tls.key" -out "$HOME/mas-drroc4-pki/mas-tls.crt" \
+  -subj "/CN=${MAS_DOMAIN}" -addext "subjectAltName=DNS:${MAS_DOMAIN},DNS:*.${MAS_DOMAIN}"
+vkv secret/drroc4/drroc4/drgitopsapp/certs/public \
+  tls_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.crt" | tr -d '\r\n')" \
+  tls_key_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.key" | tr -d '\r\n')" \
+  ca_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mas-tls.crt" | tr -d '\r\n')"   # self-signed → its own CA
+```
+
+Swap the real cert later with no config change: re-run the `vkv … certs/public` put with the real
+files, then `oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite`.
 
 Verify, then move the PKI to escrow:
 
