@@ -25,9 +25,13 @@ oc exec -i -n "$VAULT_NS" vault-0 -- sh -c \
   "export VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN='$VAULT_ROOT_TOKEN'; vault policy write mas-gitops-writer -" \
   < "$ROOT/vault-auth/mas-gitops-writer-policy.hcl"
 
-say "binding roles: mas-gitops → repo-server; mas-gitops-writer → SLS/DRO harvest SAs"
+# Derive the ACTUAL repo-server SA (OpenShift GitOps names it openshift-gitops-argocd-repo-server,
+# not openshift-gitops-repo-server) — hardcoding it causes Vault 403 "service account not authorized".
+REPO_SA="$(oc get deployment openshift-gitops-repo-server -n "$ARGO_NS" -o jsonpath='{.spec.template.spec.serviceAccountName}')"
+[[ -n "$REPO_SA" ]] || die "could not resolve the repo-server service account in $ARGO_NS"
+say "binding roles: mas-gitops → $REPO_SA; mas-gitops-writer → SLS/DRO harvest SAs"
 vault_exec "$VAULT_ROOT_TOKEN" "vault write auth/kubernetes/role/mas-gitops \
-  bound_service_account_names=openshift-gitops-repo-server \
+  bound_service_account_names=$REPO_SA \
   bound_service_account_namespaces=$ARGO_NS policies=mas-gitops ttl=20m"
 vault_exec "$VAULT_ROOT_TOKEN" "vault write auth/kubernetes/role/mas-gitops-writer \
   bound_service_account_names=postsync-ibm-sls-update-sm-sa,postsync-ibm-dro-update-sm-sa \
