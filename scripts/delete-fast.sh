@@ -18,7 +18,7 @@ set -euo pipefail
 #   1. pause Argo CD DURABLY (ArgoCD CR replicas=0; the operator re-pins plain scale)
 #   2. discover + delete ApplicationSets, then Applications (label-selected)
 #   3. purge OLM in target namespaces (subs -> installplans -> CSVs -> operatorgroups)
-#   4. strip MAS/operator CR + PVC finalizers, delete namespaces, force-finalize stragglers
+#   4. strip CR finalizers, force-delete pods, clear PVCs (wait), THEN delete namespaces
 #   5. sweep orphaned CSVs and cluster-scoped leftovers (catalog, instance RBAC)
 #   6. verify by re-querying the same label selectors
 # Argo CD controllers are restored on exit.
@@ -277,7 +277,7 @@ for ns in "${NS_LIST[@]}"; do
   echo "  purged OLM artifacts in $ns"
 done
 
-say "4. Strip MAS/operator CR + PVC finalizers, delete namespaces (parallel)"
+say "4. Strip CR finalizers, force-delete pods, clear PVCs, THEN delete namespaces (parallel)"
 MAS_CRDS="suites.core.mas.ibm.com workspaces.core.mas.ibm.com manageapps.apps.mas.ibm.com \
 manageworkspaces.apps.mas.ibm.com healthapps.apps.mas.ibm.com mongocfgs.config.mas.ibm.com \
 slscfgs.config.mas.ibm.com jdbccfgs.config.mas.ibm.com bascfgs.config.mas.ibm.com \
@@ -294,10 +294,25 @@ for ns in "${NS_LIST[@]}"; do
         [[ -n "$o" ]] && oc patch "$o" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
       done || true
     done
-    # kubernetes.io/pvc-protection blocks namespace termination until pods release PVCs
+    # FORCE-DELETE PODS FIRST. kubernetes.io/pvc-protection re-adds a PVC's finalizer while any pod
+    # still mounts it, and a hung CSI (isilon) unmount leaves pods stuck Terminating — so a PVC
+    # finalizer strip done before the pods are gone just gets undone. Kill pods, THEN the strip sticks.
+    oc delete pod --all -n "$ns" --grace-period=0 --force >/dev/null 2>&1 || true
+    # Now clear the PVCs (reclaim=Delete then removes their PVs).
     oc get pvc -n "$ns" -o name 2>/dev/null | while read -r p; do
       oc patch "$p" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
     done || true
+    oc delete pvc --all -n "$ns" --grace-period=0 --force >/dev/null 2>&1 || true
+    # WAIT for the PVCs to actually disappear before deleting the namespace. Deleting (and later
+    # force-finalizing) a namespace while its PVCs still carry finalizers strands them as un-addressable
+    # GHOST PVCs — their namespace is gone, so `oc patch pvc -n <ns>` fails with "namespace not found".
+    for _ in $(seq 1 12); do
+      [[ -z "$(oc get pvc -n "$ns" -o name 2>/dev/null)" ]] && break
+      oc get pvc -n "$ns" -o name 2>/dev/null | while read -r p; do   # re-strip if pvc-protection re-added it
+        oc patch "$p" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+      done || true
+      sleep 5
+    done
     oc delete ns "$ns" --ignore-not-found --wait=false >/dev/null 2>&1 || true
     echo "  deleting namespace/$ns"
   ) &
@@ -311,6 +326,12 @@ for _ in $(seq 1 18); do
   for ns in "${NS_LIST[@]}"; do
     oc get ns "$ns" >/dev/null 2>&1 || continue
     remaining=1
+    # NEVER force-finalize a namespace that still has PVCs — that is exactly what orphans them into
+    # un-addressable ghosts. Clear any lingering pods + PVC finalizers first, then force-finalize.
+    oc delete pod --all -n "$ns" --grace-period=0 --force >/dev/null 2>&1 || true
+    oc get pvc -n "$ns" -o name 2>/dev/null | while read -r p; do
+      oc patch "$p" -n "$ns" --type=merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    done || true
     oc get ns "$ns" -o json 2>/dev/null \
       | python3 -c 'import sys,json; d=json.load(sys.stdin); d.get("spec",{}).pop("finalizers",None); sys.stdout.write(json.dumps(d))' 2>/dev/null \
       | oc replace --raw "/api/v1/namespaces/${ns}/finalize" -f - >/dev/null 2>&1 || true
