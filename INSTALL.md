@@ -35,11 +35,12 @@ helm template platform gitops \
 
 ## 3. Bootstrap Argo CD
 
-Create the GitLab repo credential (the `repo-creds` label is required, or Git fetch fails):
+Create the GitLab repo credential (the `repo-creds` label is required, or Git fetch fails).
+Export the deploy-token creds (this shell only), then apply:
 
 ```bash
-read -rp 'GitLab deploy-token username: ' GITLAB_USER
-read -rsp 'GitLab deploy token: ' GITLAB_TOKEN; echo
+export GITLAB_USER='...'
+export GITLAB_TOKEN='...'
 oc apply -f - <<EOF
 apiVersion: v1
 kind: Secret
