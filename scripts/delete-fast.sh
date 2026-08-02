@@ -24,19 +24,23 @@ set -euo pipefail
 # Argo CD controllers are restored on exit.
 #
 # Usage:
-#   ./scripts/delete-fast.sh [--confirm] [--include-vault] [--all-mas] <cluster.env | cluster-name>
+#   ./scripts/delete-fast.sh [--confirm] [--include-vault] [--include-crds] [--all-mas] <cluster.env | cluster-name>
+#   --include-crds ALSO deletes the *.mas.ibm.com / *.sls.ibm.com CRDs. These are cluster-wide and
+#   shared by every MAS instance, so they are PRESERVED by default; only pass it when NO other
+#   instance uses them (e.g. tearing the whole cluster down).
 #   (omit target if CLUSTER_ID/INSTANCE_ID are exported). Without --confirm it is a DRY
 #   RUN that queries the cluster and prints exactly what WOULD be deleted.
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 source "$ROOT/scripts/lib-argocd-oc.sh"
 
 usage(){ sed -n '3,30p' "$0"; }
-CONFIRM=0; INCLUDE_VAULT=0; ALL_MAS=0; ENVARG=""
+CONFIRM=0; INCLUDE_VAULT=0; ALL_MAS=0; INCLUDE_CRDS=0; ENVARG=""
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --confirm) CONFIRM=1; shift ;;
     --include-vault) INCLUDE_VAULT=1; shift ;;
     --all-mas) ALL_MAS=1; shift ;;   # discover EVERY MAS instance namespace, not just this one
+    --include-crds) INCLUDE_CRDS=1; shift ;;   # ALSO delete the MAS CRDs (cluster-wide! removes them for EVERY instance)
     -h|--help) usage; exit 0 ;;
     -*) echo "ERROR: unknown option: $1" >&2; usage >&2; exit 2 ;;
     *) ENVARG="$1"; shift ;;
@@ -115,6 +119,15 @@ echo "Applications found ($(echo "$APPS" | grep -c . || true)):"
 echo "${APPS:-  (none)}" | sed 's/^/  /'
 echo "Namespaces targeted:"; printf '  %s\n' "${NS_LIST[@]}"
 echo "Vault: $([[ $INCLUDE_VAULT == 1 ]] && echo INCLUDED || echo preserved)"
+# MAS CRDs are cluster-scoped and SHARED by every instance on the cluster, so they are preserved
+# by default. --include-crds removes them (only safe when NO other MAS instance uses them).
+mas_crds(){ oc get crd -o name 2>/dev/null | grep -E '\.mas\.ibm\.com$|\.sls\.ibm\.com$' | sed 's#.*/##'; }
+if [[ "$INCLUDE_CRDS" == 1 ]]; then
+  echo "MAS CRDs: WILL BE DELETED (cluster-wide — removes these types for EVERY instance):"
+  mas_crds | sed 's/^/    /' || echo "    (none)"
+else
+  echo "MAS CRDs: preserved (pass --include-crds to also delete them cluster-wide)"
+fi
 
 if [[ -z "$APPS" && -z "$APPSETS" ]]; then
   echo
@@ -273,6 +286,17 @@ for kind in clusterrole clusterrolebinding; do
       done || true
 done
 
+if [[ "$INCLUDE_CRDS" == 1 ]]; then
+  say "6b. Delete MAS CRDs (cluster-wide — you passed --include-crds)"
+  for c in $(mas_crds); do
+    oc patch crd "$c" --type merge -p '{"metadata":{"finalizers":[]}}' >/dev/null 2>&1 || true
+    oc delete crd "$c" --ignore-not-found --wait=false >/dev/null 2>&1 || true
+    echo "  deleted crd/$c"
+  done
+else
+  say "6b. MAS CRDs preserved (re-run with --include-crds to remove them)"
+fi
+
 say "7. Verify (same selectors as discovery)"
 echo "ApplicationSets:"; oc get applicationsets -n "$ARGO_NS" 2>/dev/null | grep -E "${ACCOUNT_ID}|${CLUSTER_ID}" || echo "  none"
 echo "Applications (label cluster=${CLUSTER_ID}):"
@@ -283,6 +307,7 @@ echo "Operator residue:"
 oc get csv,subscription -A 2>/dev/null \
   | grep -E "$(printf '%s|' "${NS_LIST[@]}" | sed 's/|$//')" \
   | grep -iE 'mas|sls|mongo|truststore|data-reporter|metric|db2' || echo "  none"
+echo "MAS CRDs:"; mas_crds | sed 's/^/  /' | grep . || echo "  none"
 echo
-echo "Teardown complete (cluster=$CLUSTER_ID instance=$INSTANCE_ID, vault=$([[ $INCLUDE_VAULT == 1 ]] && echo deleted || echo preserved))."
+echo "Teardown complete (cluster=$CLUSTER_ID instance=$INSTANCE_ID, vault=$([[ $INCLUDE_VAULT == 1 ]] && echo deleted || echo preserved), crds=$([[ $INCLUDE_CRDS == 1 ]] && echo deleted || echo preserved))."
 echo "Reinstall: follow INSTALL.md from section 3 (bootstrap) — or section 7/8 if Vault was preserved."
