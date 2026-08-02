@@ -124,66 +124,34 @@ oc adm policy add-cluster-role-to-user system:auth-delegator -z vault -n vault
 
 ## 7. Seed secrets
 
-Export your inputs (this shell only), then run the puts — no prompts:
+Export your inputs (this shell only), then run the seed script — it derives every Vault path
+from the env files, generates the Mongo CA, and does all the `vkv` puts:
 
 ```bash
 export IBM_ENTITLEMENT_KEY='...'
 export LICENSE_FILE='/secure/path/license.dat'
 export JDBC_USER='...'  JDBC_PASS='...'  JDBC_URL='jdbc:oracle:thin:@//host:1521/SERVICE'
 
-vkv(){ oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-       VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv put "$@"; }
+./bootstrap/seed-secrets.sh drroc4
 ```
 
-Do **not** seed the `dro` or `sls` paths — the patched IBM Jobs write those during step 9.
+Optional exports (before running it):
 
-Entitlement + license + Oracle JDBC:
+| Export | Purpose |
+|---|---|
+| `MAS_TLS_CRT_FILE` `MAS_TLS_KEY_FILE` `MAS_CA_FILE` | seed a real MAS core cert — only with `MAS_MANUAL_CERT_MGMT=true`; omit to let MAS self-sign |
+| `MONGO_CA_CRT_FILE` `MONGO_CA_KEY_FILE` | bring your own Mongo CA instead of generating one |
+| `MONGO_HOST` | override the derived Mongo host |
 
-```bash
-ENTITLEMENT_B64="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' \
-  "$(printf 'cp:%s' "$IBM_ENTITLEMENT_KEY" | base64 | tr -d '\r\n')" | base64 | tr -d '\r\n')"
-vkv secret/drroc4/drroc4/entitlement image_pull_secret_b64="$ENTITLEMENT_B64"
-vkv secret/drroc4/drroc4/drrocapp/license license_file="$(cat "$LICENSE_FILE")"
-vkv secret/drroc4/drroc4/drrocapp/jdbc-system \
-  username="$JDBC_USER" password="$JDBC_PASS" jdbc_url="$JDBC_URL"
-```
+It does **not** seed `dro`/`sls` — the patched IBM Jobs write those in step 9. To add a real MAS
+cert later: set `MAS_MANUAL_CERT_MGMT=true` in `mas-config-repo/envs/<cluster>.env`, re-render +
+commit, re-run the seed with `MAS_TLS_*`/`MAS_CA_FILE` exported, then
+`oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite`.
 
-MongoDB CA (generated once) + credentials:
-
-```bash
-umask 077; mkdir -p "$HOME/mas-drroc4-pki"
-openssl genrsa -out "$HOME/mas-drroc4-pki/mongo-ca.key" 4096
-openssl req -x509 -new -nodes -key "$HOME/mas-drroc4-pki/mongo-ca.key" -sha256 -days 3650 \
-  -subj '/CN=drrocapp-mongo-ca' -out "$HOME/mas-drroc4-pki/mongo-ca.crt"
-MONGO_CA_PEM="$(cat "$HOME/mas-drroc4-pki/mongo-ca.crt")"
-
-vkv secret/drroc4/drroc4/drrocapp/mongo-ca \
-  tls_crt_b64="$(base64 < "$HOME/mas-drroc4-pki/mongo-ca.crt" | tr -d '\r\n')" \
-  tls_key_b64="$(base64 < "$HOME/mas-drroc4-pki/mongo-ca.key" | tr -d '\r\n')"
-vkv secret/drroc4/drroc4/drrocapp/mongo \
-  username=admin password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)" \
-  host=drrocapp-mongo-svc.mongo-gitops.svc.cluster.local ca.crt="$MONGO_CA_PEM"
-vkv secret/drroc4/drroc4/drrocapp/sls-mongo \
-  username=slsmongo password="$(openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24)" ca.crt="$MONGO_CA_PEM"
-```
-
-**MAS public certificate — default (self-signed by MAS).** With `MAS_MANUAL_CERT_MGMT=false` in the
-config env (the default), MAS auto-generates its own core cert, so **nothing to seed here**. To use
-your own cert later: set `MAS_MANUAL_CERT_MGMT=true` in `mas-config-repo/envs/<cluster>.env`,
-re-render + commit, then seed `certs/public` and hard-refresh:
+Verify, then move the PKI to escrow:
 
 ```bash
-vkv secret/drroc4/drroc4/drrocapp/certs/public \
-  tls_crt_b64="$(base64 < mas-tls.crt | tr -d '\r\n')" \
-  tls_key_b64="$(base64 < mas-tls.key | tr -d '\r\n')" \
-  ca_crt_b64="$(base64 < mas-ca.crt   | tr -d '\r\n')"
-oc annotate application ibm-mas-account-root -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
-```
-
-Verify (certs/public shows `--` when using the default; that's fine), then move the PKI to escrow:
-
-```bash
-./bootstrap/12-vault-verify.sh drroc4     # must print PASS
+./bootstrap/12-vault-verify.sh drroc4     # must print PASS (certs/public shows -- when self-signing)
 ```
 
 ## 8. Deploy MongoDB

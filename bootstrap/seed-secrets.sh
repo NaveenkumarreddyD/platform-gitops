@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+# seed-secrets.sh <env> — seed the static secrets into Vault from EXPORTED variables.
+# Runs the vkv puts for step 7. All Vault paths are derived from the env files
+# (account/cluster/instance), so nothing is hard-coded. Run after 11-vault-config.sh.
+#
+# Required exports:
+#   VAULT_ROOT_TOKEN     root token from vault-init-<env>.json
+#   IBM_ENTITLEMENT_KEY  IBM entitlement key
+#   LICENSE_FILE         path to the MAS license file (license.dat)
+#   JDBC_USER JDBC_PASS JDBC_URL   Oracle credentials + URL
+#
+# Optional exports:
+#   MONGO_HOST                     default: <instance>-mongo-svc.<mongo-ns>.svc.cluster.local
+#   MONGO_CA_CRT_FILE MONGO_CA_KEY_FILE   bring your own Mongo CA (else one is generated)
+#   MAS_TLS_CRT_FILE MAS_TLS_KEY_FILE MAS_CA_FILE   seed certs/public (only if using a real MAS cert)
+#   PKI_DIR                        where a generated Mongo CA is written (default: ~/mas-<cluster>-pki)
+source "$(cd "$(dirname "$0")" && pwd)/lib-bootstrap.sh"
+resolve_env "${1:-}"; require_cluster
+: "${VAULT_ROOT_TOKEN:?export VAULT_ROOT_TOKEN}"
+: "${IBM_ENTITLEMENT_KEY:?export IBM_ENTITLEMENT_KEY}"
+: "${LICENSE_FILE:?export LICENSE_FILE (path to license.dat)}"
+: "${JDBC_USER:?export JDBC_USER}"; : "${JDBC_PASS:?export JDBC_PASS}"; : "${JDBC_URL:?export JDBC_URL}"
+[[ -f "$LICENSE_FILE" ]] || die "LICENSE_FILE not found: $LICENSE_FILE"
+
+INSTANCE="$(env_instance)"; MONGO_NS="$(env_mongo_ns)"
+P="$(vault_path)"; C="$(vault_cluster_path)"
+MONGO_HOST="${MONGO_HOST:-${INSTANCE}-mongo-svc.${MONGO_NS}.svc.cluster.local}"
+PKI_DIR="${PKI_DIR:-$HOME/mas-$(env_cluster)-pki}"
+
+# Pass values as argv (not via sh -c) so PEM/multi-line values are preserved exactly.
+vkv(){ oc exec -n "$VAULT_NS" vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
+       VAULT_TOKEN="$VAULT_ROOT_TOKEN" vault kv put "$@" >/dev/null; }
+rndpw(){ openssl rand -base64 24 | tr -dc 'A-Za-z0-9' | head -c 24; }
+
+say "seeding secrets for $ENV under $C and $P"
+
+# entitlement (cluster) + license + jdbc (instance)
+ENTITLEMENT_B64="$(printf '{"auths":{"cp.icr.io":{"auth":"%s"}}}' \
+  "$(printf 'cp:%s' "$IBM_ENTITLEMENT_KEY" | base64 | tr -d '\r\n')" | base64 | tr -d '\r\n')"
+vkv "$C/entitlement"        image_pull_secret_b64="$ENTITLEMENT_B64"
+vkv "$P/license"            license_file="$(cat "$LICENSE_FILE")"
+vkv "$P/jdbc-system"        username="$JDBC_USER" password="$JDBC_PASS" jdbc_url="$JDBC_URL"
+say "  ok  entitlement, license, jdbc-system"
+
+# Mongo CA — bring your own, or generate one.
+umask 077; mkdir -p "$PKI_DIR"
+if [[ -n "${MONGO_CA_CRT_FILE:-}" && -n "${MONGO_CA_KEY_FILE:-}" ]]; then
+  CA_CRT="$MONGO_CA_CRT_FILE"; CA_KEY="$MONGO_CA_KEY_FILE"; say "  using provided Mongo CA"
+else
+  CA_CRT="$PKI_DIR/mongo-ca.crt"; CA_KEY="$PKI_DIR/mongo-ca.key"
+  [[ -f "$CA_CRT" ]] || { openssl genrsa -out "$CA_KEY" 4096 2>/dev/null
+    openssl req -x509 -new -nodes -key "$CA_KEY" -sha256 -days 3650 \
+      -subj "/CN=${INSTANCE}-mongo-ca" -out "$CA_CRT" 2>/dev/null; say "  generated Mongo CA -> $CA_CRT"; }
+fi
+CA_PEM="$(cat "$CA_CRT")"
+vkv "$P/mongo-ca"  tls_crt_b64="$(base64 < "$CA_CRT" | tr -d '\r\n')" tls_key_b64="$(base64 < "$CA_KEY" | tr -d '\r\n')"
+vkv "$P/mongo"     username=admin    password="$(rndpw)" host="$MONGO_HOST" ca.crt="$CA_PEM"
+vkv "$P/sls-mongo" username=slsmongo password="$(rndpw)" ca.crt="$CA_PEM"
+say "  ok  mongo-ca, mongo (host=$MONGO_HOST), sls-mongo"
+
+# certs/public — only when providing a real MAS cert (MAS_MANUAL_CERT_MGMT=true).
+if [[ -n "${MAS_TLS_CRT_FILE:-}" && -n "${MAS_TLS_KEY_FILE:-}" && -n "${MAS_CA_FILE:-}" ]]; then
+  vkv "$P/certs/public" \
+    tls_crt_b64="$(base64 < "$MAS_TLS_CRT_FILE" | tr -d '\r\n')" \
+    tls_key_b64="$(base64 < "$MAS_TLS_KEY_FILE" | tr -d '\r\n')" \
+    ca_crt_b64="$(base64 < "$MAS_CA_FILE" | tr -d '\r\n')"
+  say "  ok  certs/public (manual MAS cert)"
+else
+  say "  --  certs/public skipped (MAS self-signs; set MAS_TLS_CRT_FILE/KEY/CA to provide a real cert)"
+fi
+
+say "done. Move $PKI_DIR + vault-init-$ENV.json to escrow. NEXT: ./bootstrap/12-vault-verify.sh $ENV"

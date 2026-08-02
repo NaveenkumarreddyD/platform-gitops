@@ -8,6 +8,7 @@ There is no app-of-apps and no `installStage`; ordering is enforced by the scrip
 05-operators.sh <env>     OLM operators: cert-manager (+ grafana-operator if enabled) → waits for CRDs
 10-vault.sh <env>         deploy Vault           → then init + unseal (manual, INSTALL.md §4)
 11-vault-config.sh <env>  kv-v2 + k8s auth + policies + roles   (needs VAULT_ROOT_TOKEN)
+seed-secrets.sh <env>     seed static secrets from EXPORTED vars (derives all Vault paths)
 12-vault-verify.sh <env>  READ-ONLY: assert every required secret is seeded
 20-mongodb.sh <env>       deploy MongoDB         → waits for Running (needs cert-manager CRDs)
 30-mas.sh <env>           deploy MAS             → refuses unless Mongo Running + Vault verified
