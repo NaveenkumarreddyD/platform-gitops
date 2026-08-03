@@ -1,5 +1,9 @@
 # IBM MAS installation (per cluster)
 
+> Prefer the raw commands (or want to understand what each script does under the hood)?
+> See [MANUAL-INSTALL.md](MANUAL-INSTALL.md) — the same steps expanded into literal
+> `oc` / `helm` / `vault` commands, no bootstrap scripts.
+
 Run the steps in order. Examples use **drroc4** — for another env, replace `drroc4/drroc4`
 (account/cluster) and `drrocapp` (instance). Each env is its own cluster with its own account;
 Vault paths are `secret/<account>/<cluster>/[<instance>]/...`. The Vault policy files wildcard the
