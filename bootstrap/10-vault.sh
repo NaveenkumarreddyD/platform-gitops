@@ -7,6 +7,26 @@ resolve_env "${1:-}"; require_cluster
 
 apply_component vault
 
+# Pin the serving cert to the ACTIVE service so its SAN is ALWAYS vault-active.vault.svc. The chart
+# would annotate multiple services (vault + vault-active) with the same secret name, and service-ca
+# then non-deterministically issues the cert for one — the doc4(vault-active) vs drroc4(vault.vault.svc)
+# mismatch. Annotating ONLY vault-active makes it deterministic. Do this BEFORE waiting for pods:
+# they mount vault-tls, so they stay ContainerCreating until service-ca has issued it.
+say "pinning the serving cert to the vault-active service (deterministic vault-active.vault.svc)…"
+for i in $(seq 1 30); do oc get svc vault-active -n "$VAULT_NS" >/dev/null 2>&1 && break; sleep 5; done
+oc annotate svc vault-active -n "$VAULT_NS" \
+  service.beta.openshift.io/serving-cert-secret-name=vault-tls --overwrite >/dev/null 2>&1 \
+  && say "  vault-active annotated; service-ca will issue vault-tls for vault-active.vault.svc" \
+  || say "  NOTE: could not annotate vault-active yet (re-run if pods hang on the vault-tls mount)"
+# If a stale vault-tls exists whose SAN is NOT vault-active (e.g. an older deploy), drop it so
+# service-ca reissues it correctly; then bounce any pods stuck on the old/missing cert.
+if oc get secret vault-tls -n "$VAULT_NS" >/dev/null 2>&1 \
+   && ! oc get secret vault-tls -n "$VAULT_NS" -o jsonpath='{.data.tls\.crt}' 2>/dev/null \
+        | base64 -d 2>/dev/null | openssl x509 -noout -text 2>/dev/null | grep -q 'vault-active\.vault\.svc'; then
+  oc delete secret vault-tls -n "$VAULT_NS" >/dev/null 2>&1
+  say "  removed stale vault-tls (wrong SAN); service-ca will reissue for vault-active.vault.svc"
+fi
+
 say "waiting for the Vault statefulset to appear…"
 oc rollout status statefulset/vault -n "$VAULT_NS" --timeout=5m 2>/dev/null || true
 oc get pods -n "$VAULT_NS" -l app.kubernetes.io/name=vault 2>/dev/null || true

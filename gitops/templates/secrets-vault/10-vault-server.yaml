@@ -47,12 +47,14 @@ spec:
           extraEnvironmentVars:
             VAULT_CACERT: /vault/userconfig/service-ca-bundle/service-ca.crt
             VAULT_TLS_SERVER_NAME: vault-active.vault.svc
-          # OpenShift's service-ca issues the serving cert into secret 'vault-tls' (mounted below)
-          # because of this annotation on the Vault Service.
+          # The serving cert (secret 'vault-tls', mounted below) is NOT requested here. The chart's
+          # server.service.annotations get applied to MULTIPLE services (vault + vault-active), and
+          # OpenShift's service-ca would then non-deterministically issue the cert for one of them —
+          # sometimes vault.vault.svc, sometimes vault-active.vault.svc (the classic cross-cluster
+          # mismatch). Instead 10-vault.sh annotates ONLY the vault-active service, so the SAN is
+          # ALWAYS vault-active.vault.svc (matches VAULT_TLS_SERVER_NAME, AVP, harvest, INSTALL.md).
           service:
             enabled: true
-            annotations:
-              service.beta.openshift.io/serving-cert-secret-name: vault-tls
           volumes:
             - name: vault-tls
               secret: { secretName: vault-tls }
@@ -111,6 +113,14 @@ spec:
       kind: Route
       name: vault
       jsonPointers: [ /spec/tls/destinationCACertificate ]
+    # 10-vault.sh adds the serving-cert annotation to the vault-active Service (see note above);
+    # ignore it so selfHeal doesn't strip the runtime annotation.
+    - group: ""
+      kind: Service
+      name: vault-active
+      namespace: vault
+      jqPathExpressions:
+        - '.metadata.annotations["service.beta.openshift.io/serving-cert-secret-name"]'
   syncPolicy:
     automated: { prune: false, selfHeal: true }
     retry:
