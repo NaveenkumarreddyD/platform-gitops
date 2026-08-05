@@ -35,9 +35,9 @@ VALUES=gitops/envs/$ENV/values.yaml
 # ac = "apply component": render the Argo CD Application pointer and apply it (== apply_component)
 ac(){ helm template platform gitops -f "$COMMON" -f "$VALUES" --set component="$1" "${@:2}" | oc apply -f -; }
 
-# v / vi = run the vault CLI inside vault-0 over TLS (vi = stdin variant for policy files)
-v(){  oc exec    -n $VAULT_NS vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault-active.vault.svc ${VAULT_ROOT_TOKEN:+VAULT_TOKEN=$VAULT_ROOT_TOKEN} vault "$@"; }
-vi(){ oc exec -i -n $VAULT_NS vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault-active.vault.svc VAULT_TOKEN=$VAULT_ROOT_TOKEN vault "$@"; }
+# v / vi = run the vault CLI inside vault-0 (HTTP) (vi = stdin variant for policy files)
+v(){  oc exec    -n $VAULT_NS vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 ${VAULT_ROOT_TOKEN:+VAULT_TOKEN=$VAULT_ROOT_TOKEN} vault "$@"; }
+vi(){ oc exec -i -n $VAULT_NS vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 VAULT_TOKEN=$VAULT_ROOT_TOKEN vault "$@"; }
 ```
 
 `ac`, `v`, `vi` mirror `apply_component`, `vault_exec`, `vault_exec_stdin` in
@@ -105,12 +105,9 @@ Vault comes up **empty + sealed**; init/unseal is Phase 3.
 ac vault
 oc rollout status statefulset/vault -n $VAULT_NS --timeout=5m || true
 oc get pods -n $VAULT_NS
-
-# wire the UI route to trust the backend service-serving cert
-CA="$(oc get cm service-ca-bundle -n $VAULT_NS -o jsonpath='{.data.service-ca\.crt}')"
-oc patch route vault -n $VAULT_NS --type merge \
-  -p "$(jq -n --arg ca "$CA" '{spec:{tls:{destinationCACertificate:$ca}}}')"
 ```
+Vault runs **HTTP** (non-TLS); the UI Route uses edge TLS at the router, so no
+`destinationCACertificate` / service-ca wiring is needed.
 
 ---
 
@@ -121,9 +118,7 @@ file — a failed redirect truncates it.
 
 ```bash
 umask 077
-oc exec -n $VAULT_NS vault-0 -- env VAULT_ADDR=https://127.0.0.1:8200 \
-  VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt \
-  VAULT_TLS_SERVER_NAME=vault-active.vault.svc \
+oc exec -n $VAULT_NS vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
   vault operator init -key-shares=5 -key-threshold=3 -format=json > "$HOME/vault-init-$ENV.json"
 test -s "$HOME/vault-init-$ENV.json" && jq -e .root_token "$HOME/vault-init-$ENV.json" >/dev/null && echo "OK saved" || echo "INIT FAILED"
 
@@ -135,9 +130,9 @@ K3="$(jq -r .unseal_keys_b64[2] "$HOME/vault-init-$ENV.json")"
 # unseal all three (retries while followers join Raft)
 for pod in vault-0 vault-1 vault-2; do
   for a in $(seq 1 30); do
-    oc exec -n $VAULT_NS $pod -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault-active.vault.svc vault status -format=json 2>/dev/null | grep -qE '"sealed":[[:space:]]*false' && break
+    oc exec -n $VAULT_NS $pod -- env VAULT_ADDR=http://127.0.0.1:8200 vault status -format=json 2>/dev/null | grep -qE '"sealed":[[:space:]]*false' && break
     for k in "$K1" "$K2" "$K3"; do
-      oc exec -n $VAULT_NS $pod -- env VAULT_ADDR=https://127.0.0.1:8200 VAULT_CACERT=/vault/userconfig/service-ca-bundle/service-ca.crt VAULT_TLS_SERVER_NAME=vault-active.vault.svc vault operator unseal "$k" >/dev/null 2>&1 || true
+      oc exec -n $VAULT_NS $pod -- env VAULT_ADDR=http://127.0.0.1:8200 vault operator unseal "$k" >/dev/null 2>&1 || true
     done
     sleep 5
   done
@@ -274,7 +269,7 @@ SLS/DRO registration back into Vault.
 ## Gotchas the scripts handle for you
 
 - **Init once, fresh filename** — `vault operator init` at an existing keys file truncates it.
-- **`VAULT_TLS_SERVER_NAME=vault-active.vault.svc`** on every vault call — not `vault.vault.svc`
+- **Vault is HTTP** — every vault call uses `VAULT_ADDR=http://…:8200`, no `VAULT_CACERT` / `VAULT_TLS_SERVER_NAME`
   (the serving cert only covers `vault-active`).
 - **Bind the real repo-server SA** (Phase 4) or AVP returns 403 at MAS sync.
 - **Don't start Phase 7/8** until Phase 6 is all `OK` — AVP resolves those paths at sync time,

@@ -78,10 +78,10 @@ spec:
             value: k8s
           - name: AVP_K8S_ROLE
             value: mas-gitops
+          # Vault is HTTP (non-TLS) — no VAULT_CACERT needed. vault.vault.svc is the standard
+          # service DNS (any vault service resolves to the cluster; TLS name-matching no longer applies).
           - name: VAULT_ADDR
-            value: https://vault-active.vault.svc.cluster.local:8200
-          - name: VAULT_CACERT
-            value: /var/run/secrets/kubernetes.io/serviceaccount/service-ca.crt
+            value: http://vault-active.vault.svc.cluster.local:8200
         securityContext:
           runAsNonRoot: true
           allowPrivilegeEscalation: false

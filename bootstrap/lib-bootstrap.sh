@@ -11,9 +11,9 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARGO_NS="${ARGO_NS:-openshift-gitops}"
 VAULT_NS="${VAULT_NS:-vault}"
-VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-https://127.0.0.1:8200}"
-VAULT_CACERT_IN_POD="${VAULT_CACERT_IN_POD:-/vault/userconfig/service-ca-bundle/service-ca.crt}"
-VAULT_TLS_SERVER_NAME="${VAULT_TLS_SERVER_NAME:-vault-active.vault.svc}"
+# Vault is HTTP (non-TLS) — see gitops/templates/secrets-vault/10-vault-server.yaml. No CACERT /
+# server-name needed. Kept as a single override point if TLS is ever restored.
+VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-http://127.0.0.1:8200}"
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
 say(){ echo ">> $*"; }
@@ -84,11 +84,7 @@ apply_component(){
 # vault_exec <token-or-empty> <vault args...> : TLS-authenticated Vault CLI in vault-0.
 vault_exec(){
   local tok="$1"; shift
-  local -a vault_env=(
-    "VAULT_ADDR=$VAULT_ADDR_IN_POD"
-    "VAULT_CACERT=$VAULT_CACERT_IN_POD"
-    "VAULT_TLS_SERVER_NAME=$VAULT_TLS_SERVER_NAME"
-  )
+  local -a vault_env=( "VAULT_ADDR=$VAULT_ADDR_IN_POD" )
   [[ -n "$tok" ]] && vault_env+=("VAULT_TOKEN=$tok")
   oc exec -n "$VAULT_NS" vault-0 -- env "${vault_env[@]}" vault "$@"
 }
@@ -96,10 +92,7 @@ vault_exec(){
 vault_exec_stdin(){
   local tok="$1"; shift
   oc exec -i -n "$VAULT_NS" vault-0 -- env \
-    "VAULT_ADDR=$VAULT_ADDR_IN_POD" \
-    "VAULT_CACERT=$VAULT_CACERT_IN_POD" \
-    "VAULT_TLS_SERVER_NAME=$VAULT_TLS_SERVER_NAME" \
-    "VAULT_TOKEN=$tok" vault "$@"
+    "VAULT_ADDR=$VAULT_ADDR_IN_POD" "VAULT_TOKEN=$tok" vault "$@"
 }
 
 # OpenShift GitOps may run repo-server with the namespace default ServiceAccount.
