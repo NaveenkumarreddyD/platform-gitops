@@ -14,6 +14,7 @@ VAULT_NS="${VAULT_NS:-vault}"
 # Vault is HTTP (non-TLS) — see gitops/templates/secrets-vault/10-vault-server.yaml. No CACERT /
 # server-name needed. Kept as a single override point if TLS is ever restored.
 VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-http://127.0.0.1:8200}"
+AVP_VAULT_ADDR="${AVP_VAULT_ADDR:-http://vault-active.vault.svc.cluster.local:8200}"
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
 say(){ echo ">> $*"; }
@@ -103,6 +104,18 @@ repo_server_sa(){
   [[ -n "$sa" ]] || sa="$(oc get deployment openshift-gitops-repo-server -n "$ARGO_NS" \
     -o jsonpath='{.spec.template.spec.serviceAccountName}' 2>/dev/null || true)"
   echo "${sa:-default}"
+}
+
+# Assert that the running AVP sidecar is using the same Vault endpoint as the Argo CD patch.
+# This catches a stale repo-server pod before an Application reaches manifest generation.
+verify_avp_repo_server(){
+  local actual
+  actual="$(oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server \
+    -c avp-helm -- printenv VAULT_ADDR 2>/dev/null | tr -d '\r' || true)"
+  [[ -n "$actual" ]] \
+    || die "AVP sidecar is unavailable — run ./bootstrap/00-prereqs.sh $ENV"
+  [[ "$actual" == "$AVP_VAULT_ADDR" ]] \
+    || die "AVP sidecar VAULT_ADDR is '$actual', expected '$AVP_VAULT_ADDR' — run ./bootstrap/00-prereqs.sh $ENV"
 }
 
 # Log in through the same read-only Kubernetes auth role used by the AVP sidecar.

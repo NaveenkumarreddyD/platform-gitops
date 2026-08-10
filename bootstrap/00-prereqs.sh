@@ -27,6 +27,22 @@ oc apply -f "$ROOT/bootstrap/00-prereqs/03-avp-cmp-plugin.yaml"
 say "2/3 patch the ArgoCD CR (MAS CR health checks + AVP sidecar), then roll the repo-server"
 oc patch argocd "$ARGO_NS" -n "$ARGO_NS" --type merge --patch-file "$ROOT/bootstrap/argocd-cr-healthchecks-patch.yaml"
 oc patch argocd "$ARGO_NS" -n "$ARGO_NS" --type merge --patch-file "$ROOT/bootstrap/argocd-cr-avp-sidecar-patch.yaml"
+
+# Wait for the OpenShift GitOps operator to copy the ArgoCD CR change into the Deployment.
+# A plain rollout status can otherwise succeed against a still-running pod with stale AVP env.
+for i in $(seq 1 60); do
+  deployed_vault_addr="$(oc get deployment openshift-gitops-repo-server -n "$ARGO_NS" \
+    -o jsonpath='{.spec.template.spec.containers[?(@.name=="avp-helm")].env[?(@.name=="VAULT_ADDR")].value}' \
+    2>/dev/null || true)"
+  [[ "$deployed_vault_addr" == "$AVP_VAULT_ADDR" ]] && break
+  sleep 5
+done
+[[ "${deployed_vault_addr:-}" == "$AVP_VAULT_ADDR" ]] \
+  || die "Argo CD operator did not apply AVP VAULT_ADDR=$AVP_VAULT_ADDR to the repo-server Deployment"
+
+oc rollout restart deploy/openshift-gitops-repo-server -n "$ARGO_NS"
 oc rollout status deploy/openshift-gitops-repo-server -n "$ARGO_NS" --timeout=10m
+verify_avp_repo_server
+say "verified live AVP sidecar VAULT_ADDR=$AVP_VAULT_ADDR"
 
 say "3/3 done. NEXT: ./bootstrap/05-operators.sh $ENV"

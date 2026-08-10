@@ -77,7 +77,9 @@ oc apply -f bootstrap/00-prereqs/03-avp-cmp-plugin.yaml
 # patch Argo CD (MAS CR health checks + AVP sidecar), then roll the repo-server
 oc patch argocd $ARGO_NS -n $ARGO_NS --type merge --patch-file bootstrap/argocd-cr-healthchecks-patch.yaml
 oc patch argocd $ARGO_NS -n $ARGO_NS --type merge --patch-file bootstrap/argocd-cr-avp-sidecar-patch.yaml
+oc rollout restart deploy/openshift-gitops-repo-server -n $ARGO_NS
 oc rollout status deploy/openshift-gitops-repo-server -n $ARGO_NS --timeout=10m
+oc exec -n $ARGO_NS deploy/openshift-gitops-repo-server -c avp-helm -- printenv VAULT_ADDR
 ```
 
 ---

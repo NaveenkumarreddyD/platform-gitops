@@ -7,6 +7,10 @@ source "$(cd "$(dirname "$0")" && pwd)/lib-bootstrap.sh"
 resolve_env "${1:-}"; require_cluster
 MONGO_NS="$(env_mongo_ns)"
 
+# The IBM MAS account-root configures its generated applications to use AVP.
+# Verify the live sidecar even when ALLOW_UNVERIFIED bypasses data prerequisites.
+verify_avp_repo_server
+
 # MAS requires cert-manager (cert_manager_namespace in the suite config).
 oc get crd certificates.cert-manager.io >/dev/null 2>&1 \
   || die "cert-manager CRD (certificates.cert-manager.io) not found — run ./bootstrap/05-operators.sh $ENV first"

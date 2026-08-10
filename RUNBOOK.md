@@ -75,6 +75,8 @@ shown in `INSTALL.md`. Never reconstruct or store the shares in the cluster.
 ```bash
 oc get deployment openshift-gitops-repo-server -n openshift-gitops \
   -o jsonpath='{.spec.template.spec.serviceAccountName}{"\n"}'
+oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
+  -c avp-helm -- printenv VAULT_ADDR
 oc logs deployment/openshift-gitops-repo-server -n openshift-gitops -c avp-helm --tail=200
 oc get configmap cmp-plugin -n openshift-gitops -o yaml
 oc get secret gitlab-gitops-group-repo-creds -n openshift-gitops

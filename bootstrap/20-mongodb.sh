@@ -6,6 +6,10 @@ resolve_env "${1:-}"; require_cluster
 MONGO_NS="$(env_mongo_ns)"
 MONGO_RESOURCE="$(env_instance)-mongo"
 
+# MongoDB manifests contain AVP placeholders. Fail here instead of later in Argo CD when the
+# repo-server still has an old Vault endpoint or protocol.
+verify_avp_repo_server
+
 # MongoDB's TLS uses a cert-manager Issuer + Certificate — the CRDs must exist first.
 oc get crd certificates.cert-manager.io >/dev/null 2>&1 \
   || die "cert-manager CRD (certificates.cert-manager.io) not found — run ./bootstrap/05-operators.sh $ENV first"
