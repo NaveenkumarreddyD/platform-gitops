@@ -6,11 +6,8 @@ droNamespace: ibm-software-central
 slsNamespace: ""
 pollSeconds: 300
 authConfigMap: aws-secrets-manager-publisher-auth
-identitySecret: aws-rolesanywhere-publisher
+identitySecret: oneidentity-a2a-publisher
 image: "quay.io/ibmmas/cli@sha256:887cc3059a04601241687711df0c03d662931e6719121eec0eb0490001b2c8b9"
-signingHelper:
-  version: "1.8.4"
-  sha256: "b7568acd6e1517a4e1adaee68d52bfd6284a0e5305677166cd83d43a07c815c9"
 resources:
   requests: { cpu: 10m, memory: 64Mi }
   limits: { cpu: 200m, memory: 512Mi }

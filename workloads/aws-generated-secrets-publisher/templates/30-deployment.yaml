@@ -22,25 +22,6 @@ spec:
     spec:
       serviceAccountName: aws-generated-secrets-publisher
       automountServiceAccountToken: true
-      initContainers:
-        - name: install-aws-signing-helper
-          image: registry.access.redhat.com/ubi9/ubi:9.6
-          imagePullPolicy: IfNotPresent
-          env:
-            - { name: AWS_SIGNING_HELPER_VERSION, value: {{ .Values.signingHelper.version | quote }} }
-            - { name: AWS_SIGNING_HELPER_SHA256, value: {{ .Values.signingHelper.sha256 | quote }} }
-          command: ["sh", "-c"]
-          args:
-            - |
-              set -euo pipefail
-              curl -fL "https://rolesanywhere.amazonaws.com/releases/${AWS_SIGNING_HELPER_VERSION}/X86_64/Linux/Amzn2023/aws_signing_helper" -o /custom-tools/aws_signing_helper
-              printf '%s  %s\n' "$AWS_SIGNING_HELPER_SHA256" /custom-tools/aws_signing_helper | sha256sum -c -
-              chmod 0555 /custom-tools/aws_signing_helper
-          securityContext:
-            allowPrivilegeEscalation: false
-            capabilities: { drop: ["ALL"] }
-          volumeMounts:
-            - { name: custom-tools, mountPath: /custom-tools }
       containers:
         - name: publisher
           image: {{ .Values.image | quote }}
@@ -55,14 +36,13 @@ spec:
             - { name: POLL_SECONDS, value: {{ .Values.pollSeconds | quote }} }
             - name: AWS_REGION
               valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: region } }
-            - name: AWS_ROLE_ARN
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: roleArn } }
-            - name: AWS_ROLES_ANYWHERE_PROFILE_ARN
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: profileArn } }
-            - name: AWS_ROLES_ANYWHERE_TRUST_ANCHOR_ARN
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: trustAnchorArn } }
-            - name: AWS_ROLE_SESSION_NAME
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: roleSessionName } }
+            # One Identity Safeguard A2A inputs consumed by the credential_process.
+            - name: SAFEGUARD_A2A_URL
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: safeguardA2aUrl } }
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: accessKeyId } }
+            - name: CREDENTIAL_TTL_SECONDS
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: credentialTtlSeconds } }
             - { name: AWS_CONFIG_FILE, value: /etc/aws/config }
             - { name: AWS_PROFILE, value: default }
             - { name: AWS_SDK_LOAD_CONFIG, value: "1" }
@@ -84,19 +64,17 @@ spec:
             capabilities: { drop: ["ALL"] }
           volumeMounts:
             - { name: publisher-script, mountPath: /opt/publisher/publish.sh, subPath: publish.sh, readOnly: true }
-            - { name: custom-tools, mountPath: /usr/local/bin/aws_signing_helper, subPath: aws_signing_helper, readOnly: true }
-            - { name: credential-process, mountPath: /usr/local/bin/aws-rolesanywhere-credential-process, subPath: credential-process.sh, readOnly: true }
+            - { name: credential-process, mountPath: /usr/local/bin/oneidentity-credential-process, subPath: credential-process.sh, readOnly: true }
             - { name: credential-process, mountPath: /etc/aws/config, subPath: config, readOnly: true }
-            - { name: workload-identity, mountPath: /var/run/secrets/aws/roles-anywhere, readOnly: true }
+            - { name: oneidentity-identity, mountPath: /var/run/secrets/oneidentity, readOnly: true }
             - { name: tmp, mountPath: /tmp }
       securityContext:
         seccompProfile: { type: RuntimeDefault }
       volumes:
         - name: publisher-script
           configMap: { name: aws-generated-secrets-publisher, defaultMode: 365 }
-        - { name: custom-tools, emptyDir: {} }
         - name: credential-process
-          configMap: { name: aws-rolesanywhere-credential-process, defaultMode: 365 }
-        - name: workload-identity
+          configMap: { name: oneidentity-credential-process, defaultMode: 365 }
+        - name: oneidentity-identity
           secret: { secretName: {{ .Values.identitySecret }}, defaultMode: 288 }
         - { name: tmp, emptyDir: {} }

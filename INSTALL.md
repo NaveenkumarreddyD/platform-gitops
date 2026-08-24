@@ -8,45 +8,35 @@ Examples use `drroc4`. Replace it with the required environment name.
 
 ## 1. Architecture and access
 
-The on-premises workloads authenticate to AWS with IAM Roles Anywhere:
+The on-premises workloads authenticate to AWS with an IAM access key whose secret half is
+held in One Identity Safeguard. An AWS `credential_process` calls Safeguard's
+Application-to-Application (A2A) API over mutual TLS, fetches the secret access key, and
+hands the AWS SDK short-cached static credentials:
 
 ```text
-repo-server certificate -> 15-minute read role -> manifest generation
-publisher certificate   -> 15-minute write role -> generated SLS/DRO secrets
+repo-server A2A client cert -> Safeguard A2A (read registration)  -> read IAM key  -> manifest generation
+publisher  A2A client cert -> Safeguard A2A (write registration) -> write IAM key -> generated SLS/DRO secrets
 ```
 
-Do not create an IAM user or store `AWS_ACCESS_KEY_ID` and
-`AWS_SECRET_ACCESS_KEY` in OpenShift.
+A long-lived AWS access key still exists, but it is stored and rotated inside One Identity
+Safeguard, never in the cluster. Do not store `AWS_SECRET_ACCESS_KEY` in an OpenShift
+Secret. There is no Roles Anywhere, trust anchor, profile, or X.509-to-STS exchange.
 
-Create these AWS resources:
+Create these resources:
 
-1. A Roles Anywhere trust anchor for the approved issuing CA.
-2. A read profile and role for Argo CD manifest generation.
-3. A separate write profile and role for generated SLS/DRO registration.
-4. Both profiles limited to 900-second sessions with audit-friendly session names.
-5. A dedicated end-entity certificate for each workload.
+1. An IAM user with an access key for Argo CD manifest generation (read).
+2. A separate IAM user with an access key for generated SLS/DRO registration (write).
+   Separate users keep least privilege intact.
+3. For each IAM user, register its access key as a Safeguard **managed account** and
+   configure Safeguard to **auto-rotate** that key on a schedule. Safeguard-side rotation
+   is what keeps a long-lived key acceptable.
+4. A Safeguard **A2A registration** per workload: the managed account holding the AWS
+   secret access key, an A2A API key, and a client certificate the workload presents for
+   mutual TLS. Use a separate registration for the reader and the publisher.
 
-The role trust policy must include `sts:AssumeRole`, `sts:TagSession`, and
-`sts:SetSourceIdentity`, restricted to the expected trust anchor and AWS account:
-
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": {"Service": "rolesanywhere.amazonaws.com"},
-    "Action": ["sts:AssumeRole", "sts:TagSession", "sts:SetSourceIdentity"],
-    "Condition": {
-      "ArnEquals": {
-        "aws:SourceArn": "arn:aws:rolesanywhere:<region>:<aws-account>:trust-anchor/<id>"
-      },
-      "StringEquals": {
-        "aws:SourceAccount": "<aws-account>"
-      }
-    }
-  }]
-}
-```
+Store only the AWS access key **ID** in the cluster (a public identifier). The secret half
+is retrieved from Safeguard at run time and cached for `credentialTtlSeconds`; a short TTL
+makes the SDK re-fetch periodically so Safeguard-side key rotation is picked up.
 
 The read policy needs `secretsmanager:GetSecretValue` and
 `secretsmanager:DescribeSecret` on:
@@ -66,35 +56,36 @@ arn:aws:secretsmanager:<region>:<aws-account>:secret:mas/<account>/<cluster>/<in
 ```
 
 Do not grant the publisher `DeleteSecret`, `ListSecrets`, or access to deployment
-credentials. Use certificate subject conditions in the role trust policies when the
-company PKI exposes stable subject attributes.
+credentials. Scope each IAM user's policy to only the secrets and actions it needs.
 
-If the secrets use a customer-managed KMS key, allow `kms:Decrypt` to the read role and
+If the secrets use a customer-managed KMS key, allow `kms:Decrypt` to the read user and
 the minimum encrypt/data-key permissions required by Secrets Manager to the publisher.
 Restrict both with `kms:ViaService=secretsmanager.<region>.amazonaws.com`.
 
-Allow HTTPS egress from the repo-server and publisher to the regional IAM Roles Anywhere
-and Secrets Manager endpoints.
+Allow HTTPS egress from the repo-server and publisher to the regional Secrets Manager
+endpoint and to the Safeguard A2A appliance URL.
 
 For on-premises clusters, prefer **interface VPC endpoints (AWS PrivateLink)** over public
-egress so no traffic leaves the AWS network. All three services support them:
-`com.amazonaws.<region>.rolesanywhere`, `com.amazonaws.<region>.sts`, and
-`com.amazonaws.<region>.secretsmanager` (plus `com.amazonaws.<region>.kms` for a CMK).
-Reach them over Direct Connect or VPN, and resolve the service DNS to the private endpoint
-IPs from on-premises (Route 53 Resolver inbound endpoint, or `--endpoint` on the signing
-helper). When using endpoints, gate access with `aws:SourceVpce` on the role and secret
+egress so no AWS traffic leaves the AWS network. The AWS services support them:
+`com.amazonaws.<region>.sts` and `com.amazonaws.<region>.secretsmanager` (plus
+`com.amazonaws.<region>.kms` for a CMK). Reach them over Direct Connect or VPN, and resolve
+the service DNS to the private endpoint IPs from on-premises (Route 53 Resolver inbound
+endpoint). When using endpoints, gate access with `aws:SourceVpce` on the secret and KMS
 policies rather than `aws:SourceIp` — the source-IP condition is not evaluated for requests
-that arrive through a VPC endpoint. Note that endpoint policies do not apply to the Roles
-Anywhere `CreateSession` action, so enforce scope on the role and profile.
+that arrive through a VPC endpoint.
+
+The strongest posture is to let Safeguard broker the credential and rely on its rotation
+and audit trail. Because a real AWS access key exists, key rotation, least-privilege IAM,
+KMS encryption, private VPC endpoints, and CloudTrail all matter more, not less.
 
 Argo CD caches generated manifests after substitution. Restrict access to the repo-server,
 Redis, Argo CD API/UI, and application manifests to the same administrative boundary as
 the referenced secrets.
 
-AWS references:
+References:
 
-- https://docs.aws.amazon.com/rolesanywhere/latest/userguide/trust-model.html
-- https://docs.aws.amazon.com/sdkref/latest/guide/access-rolesanywhere.html
+- https://docs.aws.amazon.com/sdkref/latest/guide/feature-process-credentials.html
+- One Identity Safeguard Application-to-Application (A2A) service documentation.
 
 ## 2. Required tools and repositories
 
@@ -125,53 +116,57 @@ oc apply -f -
 
 ## 3. Configure the workload identity
 
-Create the non-secret read-role settings:
+Create the non-secret reader settings. `accessKeyId` is the AWS access key ID (public);
+its secret half comes from Safeguard. `safeguardA2aUrl` is the full A2A retrieval URL, and
+`credentialTtlSeconds` is how long the SDK caches before re-fetching:
 
 ```bash
 oc -n openshift-gitops create configmap aws-secrets-manager-auth \
   --from-literal=region='<aws-region>' \
-  --from-literal=roleArn='arn:aws:iam::<aws-account>:role/<role>' \
-  --from-literal=profileArn='arn:aws:rolesanywhere:<region>:<aws-account>:profile/<id>' \
-  --from-literal=trustAnchorArn='arn:aws:rolesanywhere:<region>:<aws-account>:trust-anchor/<id>' \
-  --from-literal=roleSessionName='mas-gitops-<cluster>' \
+  --from-literal=safeguardA2aUrl='https://safeguard.corp.example/service/a2a/v4/Credentials?type=Password' \
+  --from-literal=accessKeyId='<reader-access-key-id>' \
+  --from-literal=credentialTtlSeconds='900' \
   --dry-run=client -o yaml | oc apply -f -
 ```
 
-Create the identity Secret from the dedicated certificate and unencrypted private key:
+Create the reader A2A identity Secret from the client certificate, its unencrypted key, and
+the A2A API key. Mount `ca.pem` only for a private or internal Safeguard appliance:
 
 ```bash
-oc -n openshift-gitops create secret generic aws-rolesanywhere-avp \
-  --from-file=certificate.pem=/secure/path/workload.crt \
-  --from-file=private-key.pem=/secure/path/workload.key \
-  --from-file=intermediates.pem=/secure/path/intermediate-chain.pem \
+oc -n openshift-gitops create secret generic oneidentity-a2a-avp \
+  --from-file=client-cert.pem=/secure/path/reader-client.crt \
+  --from-file=client-key.pem=/secure/path/reader-client.key \
+  --from-file=api-key=/secure/path/reader-a2a-api-key \
+  --from-file=ca.pem=/secure/path/safeguard-ca.pem \
   --dry-run=client -o yaml | oc apply -f -
 ```
 
-The intermediate file is optional when the leaf certificate chains directly to the trust
-anchor. Never commit the certificate's private key. Rotate this identity through the
-company PKI and revoke it immediately if it is exposed.
+The client certificate and private key are the mutual-TLS identity Safeguard trusts, not
+AWS access keys. Never commit the private key or the API key. Rotate the A2A identity in
+Safeguard and revoke it immediately if it is exposed.
 
-Create the publisher settings with the separate write role and profile:
+Create the publisher settings with the separate IAM access key ID and Safeguard
+registration:
 
 ```bash
 oc -n openshift-gitops create configmap aws-secrets-manager-publisher-auth \
   --from-literal=region='<aws-region>' \
-  --from-literal=roleArn='arn:aws:iam::<aws-account>:role/<publisher-role>' \
-  --from-literal=profileArn='arn:aws:rolesanywhere:<region>:<aws-account>:profile/<publisher-profile-id>' \
-  --from-literal=trustAnchorArn='arn:aws:rolesanywhere:<region>:<aws-account>:trust-anchor/<id>' \
-  --from-literal=roleSessionName='mas-publisher-<cluster>' \
+  --from-literal=safeguardA2aUrl='https://safeguard.corp.example/service/a2a/v4/Credentials?type=Password' \
+  --from-literal=accessKeyId='<publisher-access-key-id>' \
+  --from-literal=credentialTtlSeconds='900' \
   --dry-run=client -o yaml | oc apply -f -
 
-oc -n openshift-gitops create secret generic aws-rolesanywhere-publisher \
-  --from-file=certificate.pem=/secure/path/publisher.crt \
-  --from-file=private-key.pem=/secure/path/publisher.key \
-  --from-file=intermediates.pem=/secure/path/intermediate-chain.pem \
+oc -n openshift-gitops create secret generic oneidentity-a2a-publisher \
+  --from-file=client-cert.pem=/secure/path/publisher-client.crt \
+  --from-file=client-key.pem=/secure/path/publisher-client.key \
+  --from-file=api-key=/secure/path/publisher-a2a-api-key \
+  --from-file=ca.pem=/secure/path/safeguard-ca.pem \
   --dry-run=client -o yaml | oc apply -f -
 ```
 
-The publisher certificate and private key are workload identity material, not AWS access
-keys. The AWS helper exchanges them for a 15-minute session only when the publisher calls
-Secrets Manager.
+The reader and publisher must use separate Safeguard registrations and separate IAM users
+so least privilege is preserved. The secret access key is fetched from Safeguard only when
+the workload calls Secrets Manager, and is cached in memory for `credentialTtlSeconds`.
 
 ## 4. Create the static deployment secrets
 
@@ -257,7 +252,8 @@ The preflight must pass before anything is applied.
 
 What each step does:
 
-1. `00-prereqs` configures Argo CD, the AWS Secrets Manager plugin, and Roles Anywhere.
+1. `00-prereqs` configures Argo CD, the AWS Secrets Manager plugin, and the One Identity
+   Safeguard A2A credential process.
 2. `05-operators` installs and verifies cert-manager and any explicitly enabled operator.
 3. `20-mongodb` validates its AWS secret fields, then installs the compatible MongoDB
    operator and database.
@@ -272,8 +268,8 @@ IBM `8.4.2` post-sync write-back Jobs accept only static AWS access keys and pub
 different field contract, so those two Jobs remain disabled. The platform's
 `aws-generated-secrets-publisher` Deployment replaces that function automatically.
 
-Every five minutes it checks the generated OpenShift resources, obtains a 15-minute
-publisher session through IAM Roles Anywhere, and creates or updates:
+Every five minutes it checks the generated OpenShift resources, obtains AWS credentials
+through the publisher's One Identity Safeguard A2A registration, and creates or updates:
 
 ```text
 mas/<account>/<cluster>/dro

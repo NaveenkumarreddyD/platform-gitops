@@ -8,13 +8,13 @@ spec:
         emptyDir: {}
       - name: cmp-tmp
         emptyDir: {}
-      - name: aws-rolesanywhere-config
+      - name: oneidentity-config
         configMap:
-          name: aws-rolesanywhere-credential-process
+          name: oneidentity-credential-process
           defaultMode: 365
-      - name: aws-rolesanywhere-certificate
+      - name: oneidentity-identity
         secret:
-          secretName: aws-rolesanywhere-avp
+          secretName: oneidentity-a2a-avp
           defaultMode: 288
     initContainers:
       - name: download-tools
@@ -29,10 +29,6 @@ spec:
             value: "v3.14.4"
           - name: HELM_SHA256
             value: "a5844ef2c38ef6ddf3b5a8f7d91e7e0e8ebc39a38bb3fc8013d629c1ef29c259"
-          - name: AWS_SIGNING_HELPER_VERSION
-            value: "1.8.4"
-          - name: AWS_SIGNING_HELPER_SHA256
-            value: "b7568acd6e1517a4e1adaee68d52bfd6284a0e5305677166cd83d43a07c815c9"
         command: ["sh", "-c"]
         args:
           - |
@@ -47,10 +43,6 @@ spec:
             mv /custom-tools/linux-amd64/helm /custom-tools/helm
             chmod 0555 /custom-tools/helm
             rm -rf /custom-tools/linux-amd64 /custom-tools/helm.tar.gz
-
-            curl -fL "https://rolesanywhere.amazonaws.com/releases/${AWS_SIGNING_HELPER_VERSION}/X86_64/Linux/Amzn2023/aws_signing_helper" -o /custom-tools/aws_signing_helper
-            printf '%s  %s\n' "$AWS_SIGNING_HELPER_SHA256" /custom-tools/aws_signing_helper | sha256sum -c -
-            chmod 0555 /custom-tools/aws_signing_helper
         volumeMounts:
           - name: custom-tools
             mountPath: /custom-tools
@@ -78,26 +70,22 @@ spec:
               configMapKeyRef:
                 name: aws-secrets-manager-auth
                 key: region
-          - name: AWS_ROLE_ARN
+          # One Identity Safeguard A2A inputs consumed by the credential_process.
+          - name: SAFEGUARD_A2A_URL
             valueFrom:
               configMapKeyRef:
                 name: aws-secrets-manager-auth
-                key: roleArn
-          - name: AWS_ROLES_ANYWHERE_PROFILE_ARN
+                key: safeguardA2aUrl
+          - name: AWS_ACCESS_KEY_ID
             valueFrom:
               configMapKeyRef:
                 name: aws-secrets-manager-auth
-                key: profileArn
-          - name: AWS_ROLES_ANYWHERE_TRUST_ANCHOR_ARN
+                key: accessKeyId
+          - name: CREDENTIAL_TTL_SECONDS
             valueFrom:
               configMapKeyRef:
                 name: aws-secrets-manager-auth
-                key: trustAnchorArn
-          - name: AWS_ROLE_SESSION_NAME
-            valueFrom:
-              configMapKeyRef:
-                name: aws-secrets-manager-auth
-                key: roleSessionName
+                key: credentialTtlSeconds
           - name: AWS_CONFIG_FILE
             value: /etc/aws/config
           - name: AWS_PROFILE
@@ -129,17 +117,14 @@ spec:
           - name: custom-tools
             mountPath: /usr/local/bin/helm
             subPath: helm
-          - name: custom-tools
-            mountPath: /usr/local/bin/aws_signing_helper
-            subPath: aws_signing_helper
-          - name: aws-rolesanywhere-config
+          - name: oneidentity-config
             mountPath: /etc/aws/config
             subPath: config
             readOnly: true
-          - name: aws-rolesanywhere-config
-            mountPath: /usr/local/bin/aws-rolesanywhere-credential-process
+          - name: oneidentity-config
+            mountPath: /usr/local/bin/oneidentity-credential-process
             subPath: credential-process.sh
             readOnly: true
-          - name: aws-rolesanywhere-certificate
-            mountPath: /var/run/secrets/aws/roles-anywhere
+          - name: oneidentity-identity
+            mountPath: /var/run/secrets/oneidentity
             readOnly: true

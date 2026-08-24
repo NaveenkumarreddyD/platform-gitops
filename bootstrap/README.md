@@ -15,9 +15,9 @@ reconciler; the scripts do not implement a second deployment engine.
 Before `00-prereqs`, create:
 
 - `openshift-gitops/aws-secrets-manager-auth` ConfigMap
-- `openshift-gitops/aws-rolesanywhere-avp` Secret
+- `openshift-gitops/oneidentity-a2a-avp` Secret
 - `openshift-gitops/aws-secrets-manager-publisher-auth` ConfigMap
-- `openshift-gitops/aws-rolesanywhere-publisher` Secret
+- `openshift-gitops/oneidentity-a2a-publisher` Secret
 - `openshift-gitops/gitlab-gitops-group-repo-creds` Secret
 
 The complete procedure and direct-command alternative are in

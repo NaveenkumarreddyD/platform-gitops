@@ -17,9 +17,10 @@ wrappers enforce the few cross-component readiness gates. After the `mas` compon
 applied, IBM's official `8.4.2` account root owns the MAS cluster and instance
 application tree.
 
-The SLS/DRO publisher uses a separate IAM Roles Anywhere write role to copy generated
-registration values into AWS Secrets Manager. IBM's static-key write-back Jobs remain
-disabled; publishing is automatic and does not require an operator command.
+The SLS/DRO publisher uses a separate write-scoped AWS key, retrieved on demand from
+One Identity Safeguard (A2A), to copy generated registration values into AWS Secrets
+Manager. IBM's static-key write-back Jobs remain disabled; publishing is automatic and
+does not require an operator command.
 
 All IBM applications use the `aws-secrets-manager-helm` Argo CD plugin configuration.
 Secret placeholders are resolved from AWS Secrets Manager under

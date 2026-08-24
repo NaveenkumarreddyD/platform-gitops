@@ -19,31 +19,32 @@ oc get manageapps,manageworkspaces -A
 
 ```bash
 oc get configmap aws-secrets-manager-auth -n openshift-gitops -o yaml
-oc describe secret aws-rolesanywhere-avp -n openshift-gitops
+oc describe secret oneidentity-a2a-avp -n openshift-gitops
 oc get deployment openshift-gitops-repo-server -n openshift-gitops
 oc logs deployment/openshift-gitops-repo-server -n openshift-gitops \
   -c avp-helm --tail=200
 oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
-  -c avp-helm -- printenv AVP_TYPE AWS_REGION AWS_ROLE_ARN
+  -c avp-helm -- printenv AVP_TYPE AWS_REGION AWS_ACCESS_KEY_ID
 ```
 
-Validate credential issuance without displaying the credentials:
+Validate that AWS credentials are retrieved from One Identity Safeguard A2A, without
+displaying the credentials:
 
 ```bash
 oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
-  -c avp-helm -- /usr/local/bin/aws-rolesanywhere-credential-process >/dev/null &&
-echo "temporary AWS credentials are working"
+  -c avp-helm -- /usr/local/bin/oneidentity-credential-process >/dev/null &&
+echo "AWS credentials from Safeguard A2A are working"
 ```
 
 Check the following:
 
-- The workload certificate is valid, has `Digital Signature` key usage, and chains to
-  the configured trust anchor.
-- The role trust policy restricts `aws:SourceArn` and `aws:SourceAccount`.
-- The profile permits the requested role.
-- The role can read the exact `mas/<account>/<cluster>/...` secret ARN.
-- Customer-managed KMS keys allow this role to decrypt through Secrets Manager.
-- Egress to IAM Roles Anywhere and Secrets Manager is allowed.
+- The A2A client certificate is valid and is the one the Safeguard registration trusts.
+- The A2A API key in the identity Secret matches the Safeguard registration.
+- `safeguardA2aUrl` is reachable and, for a private appliance, `ca.pem` trusts its TLS cert.
+- The IAM access key (whose secret Safeguard returns) can read the exact
+  `mas/<account>/<cluster>/...` secret ARN.
+- Customer-managed KMS keys allow this IAM user to decrypt through Secrets Manager.
+- Egress to the Safeguard A2A URL and to Secrets Manager is allowed.
 - The secret exists and the JSON field has the exact case used by the placeholder.
 
 After correcting AWS or secret data, restart the repo-server when its mounted certificate
@@ -62,31 +63,32 @@ oc annotate application <application> -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-## Rotate the Roles Anywhere certificate
+## Rotate the A2A client certificate
 
-Create the new certificate through the approved company PKI. Confirm its private key
-matches before updating the OpenShift Secret:
+Issue the new A2A client certificate and register it with the Safeguard A2A registration.
+Confirm its private key matches before updating the OpenShift Secret:
 
 ```bash
-openssl x509 -in new-workload.crt -pubkey -noout | openssl sha256
-openssl pkey -in new-workload.key -pubout | openssl sha256
+openssl x509 -in new-client.crt -pubkey -noout | openssl sha256
+openssl pkey -in new-client.key -pubout | openssl sha256
 ```
 
-The hashes must match. Update and roll:
+The hashes must match. Update and roll (mount `ca.pem` only for a private appliance):
 
 ```bash
-oc -n openshift-gitops create secret generic aws-rolesanywhere-avp \
-  --from-file=certificate.pem=new-workload.crt \
-  --from-file=private-key.pem=new-workload.key \
-  --from-file=intermediates.pem=intermediate-chain.pem \
+oc -n openshift-gitops create secret generic oneidentity-a2a-avp \
+  --from-file=client-cert.pem=new-client.crt \
+  --from-file=client-key.pem=new-client.key \
+  --from-file=api-key=reader-a2a-api-key \
+  --from-file=ca.pem=safeguard-ca.pem \
   --dry-run=client -o yaml | oc apply -f -
 oc rollout restart deployment/openshift-gitops-repo-server -n openshift-gitops
 oc rollout status deployment/openshift-gitops-repo-server \
   -n openshift-gitops --timeout=10m
 ```
 
-Run the credential check above, then revoke the old certificate according to company PKI
-policy.
+Run the credential check above, then retire the old client certificate in Safeguard. The
+AWS access key itself is rotated by Safeguard on its schedule, not here.
 
 ## DRO or SLS registration is missing
 
@@ -98,7 +100,7 @@ oc get application aws-generated-secrets-publisher-<cluster> -n openshift-gitops
 oc get deployment,pod -n openshift-gitops -l app.kubernetes.io/name=aws-generated-secrets-publisher
 oc logs deployment/aws-generated-secrets-publisher -n openshift-gitops --tail=200
 oc get configmap aws-secrets-manager-publisher-auth -n openshift-gitops -o yaml
-oc describe secret aws-rolesanywhere-publisher -n openshift-gitops
+oc describe secret oneidentity-a2a-publisher -n openshift-gitops
 ```
 
 Confirm the generated source resources exist without printing their values:

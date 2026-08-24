@@ -1,8 +1,9 @@
 # Manual installation without bootstrap scripts
 
 This performs the same installation as [INSTALL.md](INSTALL.md) with direct `oc` and
-`helm` commands. Complete the AWS role, workload identity, repository credential,
-static secrets, render, and preflight sections in `INSTALL.md` first.
+`helm` commands. Complete the IAM user and Safeguard A2A registration, workload identity,
+repository credential, static secrets, render, and preflight sections in `INSTALL.md`
+first.
 
 Examples use `drroc4`.
 
@@ -23,7 +24,7 @@ oc apply -f bootstrap/00-prereqs/00-gitlab-ca-configmap.yaml
 oc apply -f bootstrap/00-prereqs/01-argocd-cluster-admin-rbac.yaml
 oc apply -f bootstrap/00-prereqs/02-argo-project.yaml
 oc apply -f bootstrap/00-prereqs/03-avp-cmp-plugin.yaml
-oc apply -f bootstrap/00-prereqs/04-aws-rolesanywhere-credential-process.yaml
+oc apply -f bootstrap/00-prereqs/04-oneidentity-credential-process.yaml
 
 oc patch argocd openshift-gitops -n "$ARGO_NS" --type merge \
   --patch-file bootstrap/argocd-cr-healthchecks-patch.yaml
@@ -33,13 +34,14 @@ oc rollout restart deployment/openshift-gitops-repo-server -n "$ARGO_NS"
 oc rollout status deployment/openshift-gitops-repo-server -n "$ARGO_NS" --timeout=10m
 ```
 
-Confirm the live plugin uses AWS and can obtain temporary credentials:
+Confirm the live plugin uses AWS and can obtain AWS credentials retrieved from One Identity
+Safeguard A2A:
 
 ```bash
 oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- \
   printenv AVP_TYPE AWS_REGION
 oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- \
-  /usr/local/bin/aws-rolesanywhere-credential-process >/dev/null
+  /usr/local/bin/oneidentity-credential-process >/dev/null
 ```
 
 The first command must show `awssecretsmanager`. The second must exit with status zero.

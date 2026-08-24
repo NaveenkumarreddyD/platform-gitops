@@ -10,15 +10,16 @@ AWS Secrets Manager. It uses the unmodified IBM MAS GitOps release `8.4.2` from
 - `mas-gitops-config`: environment-specific IBM chart values and secret references.
 - IBM's repository: consumed directly from the official GitHub URL at the pinned tag.
 - AWS Secrets Manager: stores deployment secrets under `mas/<account>/<cluster>/...`.
-- IAM Roles Anywhere: gives the on-premises Argo CD repo-server 15-minute AWS credentials
-  from a dedicated X.509 workload certificate. No AWS access key is committed or stored
-  in an OpenShift Secret.
+- One Identity Safeguard A2A: an AWS `credential_process` fetches the AWS secret access key
+  from Safeguard's Application-to-Application API over mutual TLS, so the Argo CD repo-server
+  and publisher get AWS credentials without any AWS secret stored in an OpenShift Secret.
+  The long-lived AWS access key lives and rotates inside Safeguard.
 - Generated-secret publisher: automatically copies SLS and DRO registration into AWS
-  Secrets Manager with a separate, write-only Roles Anywhere identity.
+  Secrets Manager with a separate, write-only Safeguard A2A identity and IAM user.
 
 The `argocd-vault-plugin` executable remains because that is the upstream plugin name used
-by IBM's charts. Its configured backend is `awssecretsmanager`; no HashiCorp service,
-policy, token, or storage is part of this design.
+by IBM's charts. Its configured backend is `awssecretsmanager` (`AVP_TYPE=awssecretsmanager`);
+no HashiCorp service, policy, token, or storage is part of this design.
 
 ## Install order
 
