@@ -1,220 +1,216 @@
-# MAS GitOps runbook
+# MAS GitOps operations runbook
 
-Use this after `INSTALL.md`. No helper script is required.
+Use this after [INSTALL.md](INSTALL.md).
 
 ## Quick status
 
 ```bash
+./scripts/status.sh <env>
 oc get applications -n openshift-gitops
-oc get pods -n vault
 oc get pods -n mongo-gitops
-oc get jobs -n ibm-software-central
-oc get jobs -n mas-drrocapp-sls
 oc get licenseservices.sls.ibm.com -A
+oc get mongocfgs,slscfgs,jdbccfgs,bascfgs.config.mas.ibm.com -A
 oc get suites.core.mas.ibm.com -A
 oc get workspaces.core.mas.ibm.com -A
-oc get mongocfgs,slscfgs,jdbccfgs,bascfgs.config.mas.ibm.com -A
 oc get manageapps,manageworkspaces -A
 ```
 
-## The four core independent components
-
-There is no app-of-apps and no `installStage`. Each component is a standalone Argo CD
-Application, deployed by its own script and coupled only through Vault secret paths:
-
-| Component | Application(s) | Deployed by |
-|---|---|---|
-| Operators | `operators` (cert-manager, grafana-op) | `bootstrap/05-operators.sh` |
-| Vault | `vault` | `bootstrap/10-vault.sh` |
-| MongoDB | `mongodb-operator`, `mongodb` | `bootstrap/20-mongodb.sh` |
-| MAS | `ibm-mas-account-root` (+ IBM-generated tree) | `bootstrap/30-mas.sh` |
-
-**cert-manager not ready** (Mongo/MAS scripts fail with "cert-manager CRD not found"): the
-Red Hat cert-manager operator install is still in progress or stuck. Check:
+## AWS secret substitution fails
 
 ```bash
-oc get subscription,csv,installplan -n cert-manager-operator
-oc get crd | grep cert-manager.io          # certificates.cert-manager.io must exist
-oc get pods -n cert-manager                 # the operator deploys cert-manager here
+oc get configmap aws-secrets-manager-auth -n openshift-gitops -o yaml
+oc describe secret aws-rolesanywhere-avp -n openshift-gitops
+oc get deployment openshift-gitops-repo-server -n openshift-gitops
+oc logs deployment/openshift-gitops-repo-server -n openshift-gitops \
+  -c avp-helm --tail=200
+oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
+  -c avp-helm -- printenv AVP_TYPE AWS_REGION AWS_ROLE_ARN
 ```
 
-If Grafana is enabled, its pinned operator uses `Manual` InstallPlan approval by design; the
-operator script prints the exact approval command. Once the requested CRDs exist, rerun the step.
-
-One-glance health of all four:
+Validate credential issuance without displaying the credentials:
 
 ```bash
-./scripts/status.sh <env>
-oc get applications -n openshift-gitops -l app.kubernetes.io/part-of=mas-platform
+oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
+  -c avp-helm -- /usr/local/bin/aws-rolesanywhere-credential-process >/dev/null &&
+echo "temporary AWS credentials are working"
 ```
 
-Because the components are independent (and `prune` is `false` on Vault + Mongo), you can
-redeploy any one without touching the others — e.g. `oc delete application ibm-mas-account-root`
-then re-run `30-mas.sh` rebuilds only MAS. Force an immediate Git refresh of one component:
+Check the following:
+
+- The workload certificate is valid, has `Digital Signature` key usage, and chains to
+  the configured trust anchor.
+- The role trust policy restricts `aws:SourceArn` and `aws:SourceAccount`.
+- The profile permits the requested role.
+- The role can read the exact `mas/<account>/<cluster>/...` secret ARN.
+- Customer-managed KMS keys allow this role to decrypt through Secrets Manager.
+- Egress to IAM Roles Anywhere and Secrets Manager is allowed.
+- The secret exists and the JSON field has the exact case used by the placeholder.
+
+After correcting AWS or secret data, restart the repo-server when its mounted certificate
+or configuration changed:
 
 ```bash
-oc annotate application <vault|mongodb-operator|mongodb|ibm-mas-account-root> -n openshift-gitops \
+oc rollout restart deployment/openshift-gitops-repo-server -n openshift-gitops
+oc rollout status deployment/openshift-gitops-repo-server \
+  -n openshift-gitops --timeout=10m
+```
+
+For a value-only change in Secrets Manager, a hard refresh is enough:
+
+```bash
+oc annotate application <application> -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-## Vault is sealed
+## Rotate the Roles Anywhere certificate
 
-Check every node:
-
-```bash
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 vault status
-oc exec -n vault vault-1 -- env VAULT_ADDR=http://127.0.0.1:8200 vault status
-oc exec -n vault vault-2 -- env VAULT_ADDR=http://127.0.0.1:8200 vault status
-```
-
-An authorized operator must apply three different unseal shares to each sealed pod, as
-shown in `INSTALL.md`. Never reconstruct or store the shares in the cluster.
-
-## AVP cannot resolve a placeholder
+Create the new certificate through the approved company PKI. Confirm its private key
+matches before updating the OpenShift Secret:
 
 ```bash
-oc get deployment openshift-gitops-repo-server -n openshift-gitops \
-  -o jsonpath='{.spec.template.spec.serviceAccountName}{"\n"}'
-oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
-  -c avp-helm -- printenv VAULT_ADDR
-oc logs deployment/openshift-gitops-repo-server -n openshift-gitops -c avp-helm --tail=200
-oc get configmap cmp-plugin -n openshift-gitops -o yaml
-oc get secret gitlab-gitops-group-repo-creds -n openshift-gitops
+openssl x509 -in new-workload.crt -pubkey -noout | openssl sha256
+openssl pkey -in new-workload.key -pubout | openssl sha256
 ```
 
-Verify in Vault:
+The hashes must match. Update and roll:
 
-- Kubernetes auth role `mas-gitops` binds the displayed repo-server service account.
-- The namespace is `openshift-gitops`.
-- The role includes policy `mas-gitops`.
-- The requested path and field exist with exactly the same spelling and scope.
-- Vault is unsealed and `http://vault-active.vault.svc.cluster.local:8200` is reachable with the OpenShift service CA.
+```bash
+oc -n openshift-gitops create secret generic aws-rolesanywhere-avp \
+  --from-file=certificate.pem=new-workload.crt \
+  --from-file=private-key.pem=new-workload.key \
+  --from-file=intermediates.pem=intermediate-chain.pem \
+  --dry-run=client -o yaml | oc apply -f -
+oc rollout restart deployment/openshift-gitops-repo-server -n openshift-gitops
+oc rollout status deployment/openshift-gitops-repo-server \
+  -n openshift-gitops --timeout=10m
+```
+
+Run the credential check above, then revoke the old certificate according to company PKI
+policy.
+
+## DRO or SLS registration is missing
+
+The IBM `8.4.2` write-back hooks are intentionally disabled because they require static
+AWS keys. The platform publisher replaces those hooks automatically. Check it first:
+
+```bash
+oc get application aws-generated-secrets-publisher-<cluster> -n openshift-gitops
+oc get deployment,pod -n openshift-gitops -l app.kubernetes.io/name=aws-generated-secrets-publisher
+oc logs deployment/aws-generated-secrets-publisher -n openshift-gitops --tail=200
+oc get configmap aws-secrets-manager-publisher-auth -n openshift-gitops -o yaml
+oc describe secret aws-rolesanywhere-publisher -n openshift-gitops
+```
+
+Confirm the generated source resources exist without printing their values:
+
+```bash
+oc get route ibm-data-reporter -n ibm-software-central
+oc get secret ibm-data-reporter-operator-api-token -n ibm-software-central
+oc get configmap sls-suite-registration -n mas-<instance>-sls
+```
+
+The publisher retries every five minutes. After fixing its identity, IAM, KMS, egress, or
+source-resource issue, restart it to retry immediately:
+
+```bash
+oc rollout restart deployment/aws-generated-secrets-publisher -n openshift-gitops
+oc rollout status deployment/aws-generated-secrets-publisher \
+  -n openshift-gitops --timeout=10m
+```
+
+Verify the expected AWS fields from an approved federated administrator session:
+
+```bash
+aws secretsmanager get-secret-value --region "$AWS_REGION" \
+  --secret-id "mas/<account>/<cluster>/dro" \
+  --query SecretString --output text |
+jq -e 'has("url") and has("api_token") and has("ca.crt")'
+
+aws secretsmanager get-secret-value --region "$AWS_REGION" \
+  --secret-id "mas/<account>/<cluster>/<instance>/sls" \
+  --query SecretString --output text |
+jq -e 'has("url") and has("registration_key") and has("ca.crt")'
+```
 
 ## MongoDB is not Running
 
 ```bash
-oc get mongodbcommunity drrocapp-mongo -n mongo-gitops -o yaml
+oc get mongodbcommunity -n mongo-gitops -o yaml
 oc get pods,pvc,certificate,secret -n mongo-gitops
 oc logs deployment/mongodb-kubernetes-operator -n mongo-gitops --tail=200
 oc get events -n mongo-gitops --sort-by=.lastTimestamp
 ```
 
-Check that:
+Confirm the storage class provisions the PVCs, the operator version matches the live
+OpenShift version, and the `mongo-ca`, `mongo`, and `sls-mongo` fields follow the
+encoding rules in `INSTALL.md`.
 
-- `mongo-ca` contains a matching base64 certificate/private-key pair.
-- `mongo` and `sls-mongo` contain the same CA certificate as raw PEM.
-- `isilon` can provision all data and log PVCs.
-- The operator and database service accounts can use `nonroot-v2`.
-- The configured IBM Mongo image tag exists and can be pulled.
-
-## DRO registration is missing
+## A MAS configuration is not Ready
 
 ```bash
-oc get jobs -n ibm-software-central | grep postsync-ibm-dro-update-sm
-DRO_JOB="$(oc get jobs -n ibm-software-central -o name | grep postsync-ibm-dro-update-sm | tail -1)"
-oc logs -n ibm-software-central "$DRO_JOB" --all-containers --tail=200
-oc get route ibm-data-reporter -n ibm-software-central
+oc describe mongocfg <instance>-mongo-system -n mas-<instance>-core
+oc describe slscfg <instance>-sls-system -n mas-<instance>-core
+oc describe jdbccfg <instance>-jdbc-system -n mas-<instance>-core
+oc describe bascfg <instance>-bas-system -n mas-<instance>-core
 ```
 
-The completed Job must write:
+- `MongoCfg`: confirm host, user, password, and CA.
+- `SlsCfg`: confirm the generated SLS secret and URL.
+- `JdbcCfg`: confirm Oracle reachability and the JDBC URL.
+- `BasCfg`: confirm the cluster-level DRO secret and API token.
 
-```text
-secret/drroc4/drroc4/dro
-fields: url, api_token, ca.crt
-```
+## Certificate problems
 
-Vault role `mas-gitops-writer` must bind `postsync-ibm-dro-update-sm-sa` in
-`ibm-software-central`.
-
-## SLS registration is missing
+Every `*_b64` field must decode exactly once to valid PEM:
 
 ```bash
-oc get licenseservices.sls.ibm.com -A
-oc get configmap sls-suite-registration -n mas-drrocapp-sls
-oc get jobs -n mas-drrocapp-sls | grep postsync-ibm-sls-update-sm
-SLS_JOB="$(oc get jobs -n mas-drrocapp-sls -o name | grep postsync-ibm-sls-update-sm | tail -1)"
-oc logs -n mas-drrocapp-sls "$SLS_JOB" --all-containers --tail=200
+printf '%s' '<tls_crt_b64>' | base64 -d |
+openssl x509 -noout -subject -issuer -dates -ext subjectAltName
 ```
 
-The completed Job must write:
-
-```text
-secret/drroc4/drroc4/drrocapp/sls
-fields: registration_key, url, ca.crt
-```
-
-Vault role `mas-gitops-writer` must bind `postsync-ibm-sls-update-sm-sa` in
-`mas-drrocapp-sls`.
-
-## A MAS system configuration is not Ready
+Check the Suite and Manage certificate Secrets and the certificate presented by each route:
 
 ```bash
-oc describe mongocfg drrocapp-mongo-system -n mas-drrocapp-core
-oc describe slscfg drrocapp-sls-system -n mas-drrocapp-core
-oc describe jdbccfg drrocapp-jdbc-system -n mas-drrocapp-core
-oc describe bascfg drrocapp-bas-system -n mas-drrocapp-core
+oc get secrets -n mas-<instance>-core | grep cert
+oc get secrets -n mas-<instance>-manage | grep cert
+openssl s_client -connect <route-host>:443 -servername <route-host> </dev/null 2>/dev/null |
+openssl x509 -noout -subject -issuer -dates
 ```
 
-Common checks:
-
-- `MongoCfg`: host, credentials, and CA match the dedicated MongoDB service.
-- `SlsCfg`: the SLS runtime path exists and contains raw PEM under `ca.crt`.
-- `JdbcCfg`: Oracle URL is reachable and `sslEnabled` renders `false`.
-- `BasCfg`: it reads cluster path `secret/drroc4/drroc4/dro`, not an instance path.
-
-Hard-refresh the affected Argo CD Application after correcting a Vault value:
+## Manage is not Ready
 
 ```bash
-oc annotate application <application-name> -n openshift-gitops \
-  argocd.argoproj.io/refresh=hard --overwrite
+oc describe suite <instance> -n mas-<instance>-core
+oc get manageapp,manageworkspace -n mas-<instance>-manage
+oc describe manageapp <instance> -n mas-<instance>-manage
+oc describe manageworkspace <instance>-<workspace> -n mas-<instance>-manage
+oc get pods,events -n mas-<instance>-manage
 ```
 
-## Certificate failure
+For a fresh database, `autoGenerateEncryptionKeys` may be true. A cloned or reused
+database must use its original Manage encryption keys. Store captured keys in the
+`manage-crypto` AWS secret before rebuilding the environment.
+
+## Secret backup and rollback
+
+Use AWS Secrets Manager versioning and the approved AWS backup policy. Before a material
+change, record the current version ID:
 
 ```bash
-oc get secret drrocapp-cert-public -n mas-drrocapp-core -o yaml
-oc get secret drrocapp-drrocwks-cert-public-81 -n mas-drrocapp-manage -o yaml
-oc describe suite drrocapp -n mas-drrocapp-core
-oc get routes -n mas-drrocapp-core
-oc get routes -n mas-drrocapp-manage
+aws secretsmanager list-secret-version-ids --region "$AWS_REGION" \
+  --secret-id '<secret-id>'
 ```
 
-Each Vault `*_b64` field must decode once to PEM. Confirm locally without printing the
-private key:
+Rollback moves the `AWSCURRENT` stage to the known-good version:
 
 ```bash
-printf '%s' '<tls_crt_b64>' | base64 -d | openssl x509 -noout -subject -issuer -dates
+aws secretsmanager update-secret-version-stage --region "$AWS_REGION" \
+  --secret-id '<secret-id>' \
+  --version-stage AWSCURRENT \
+  --move-to-version-id '<known-good-version-id>' \
+  --remove-from-version-id '<bad-version-id>'
 ```
 
-The Suite chart owns the core certificate Secret; the Manage install chart owns the
-Manage certificate Secret. No custom certificate Application should exist.
-
-## Suite or Manage is not Ready
-
-```bash
-oc describe suite drrocapp -n mas-drrocapp-core
-oc get manageapp,manageworkspace -n mas-drrocapp-manage
-oc describe manageapp drrocapp -n mas-drrocapp-manage
-oc describe manageworkspace drrocapp-drrocwks -n mas-drrocapp-manage
-oc get pods -n mas-drrocapp-manage
-```
-
-Do not troubleshoot Manage until all four system configurations and the Suite are Ready.
-For a fresh database, `autoGenerateEncryptionKeys` must remain `true`. A reused database
-requires its original encryption keys and is a different recovery procedure.
-
-## Vault backup
-
-Take an encrypted, access-controlled Raft snapshot after initial seed and after material
-secret changes:
-
-```bash
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-  VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
-  vault operator raft snapshot save /tmp/drroc4.snap
-oc cp vault/vault-0:/tmp/drroc4.snap "$HOME/drroc4-vault.snap"
-oc exec -n vault vault-0 -- rm -f /tmp/drroc4.snap
-```
-
-Move the snapshot to approved backup storage. A snapshot does not replace the separated
-unseal-key shares.
+Hard-refresh the affected Argo CD application after rollback. Database, attachment, and
+Manage encryption-key recovery still require their own coordinated backups; secret
+version rollback does not restore application data.

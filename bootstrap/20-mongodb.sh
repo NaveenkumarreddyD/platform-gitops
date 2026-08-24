@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
 # 20 — deploy MongoDB operator, wait for it, then deploy the dedicated instance.
-# Reads mongo-ca / mongo / sls-mongo from Vault via AVP, so Vault must be seeded first.
+# Reads MongoDB inputs from AWS Secrets Manager through the repo-server CMP.
 source "$(cd "$(dirname "$0")" && pwd)/lib-bootstrap.sh"
 resolve_env "${1:-}"; require_cluster
 MONGO_NS="$(env_mongo_ns)"
 MONGO_RESOURCE="$(env_instance)-mongo"
 
 # MongoDB manifests contain AVP placeholders. Fail here instead of later in Argo CD when the
-# repo-server still has an old Vault endpoint or protocol.
+# repo-server still has stale AWS authentication settings.
 verify_avp_repo_server
 
 # MongoDB's TLS uses a cert-manager Issuer + Certificate — the CRDs must exist first.
@@ -15,8 +15,7 @@ oc get crd certificates.cert-manager.io >/dev/null 2>&1 \
   || die "cert-manager CRD (certificates.cert-manager.io) not found — run ./bootstrap/05-operators.sh $ENV first"
 
 # Guard: all AVP inputs must exist before either application is created.
-"$ROOT/bootstrap/12-vault-verify.sh" "$ENV" >/dev/null \
-  || die "Vault preflight failed — run ./bootstrap/12-vault-verify.sh $ENV and seed the gaps"
+verify_aws_secrets mongo
 
 # MongoDB publishes an explicit OpenShift/operator compatibility matrix. Select
 # the latest chart series listed for the cluster instead of carrying one global pin.

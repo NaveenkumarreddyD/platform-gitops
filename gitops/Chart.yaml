@@ -1,6 +1,6 @@
 apiVersion: v2
 name: gitops
-description: Generates Vault, MongoDB, the IBM MAS account root, and optional Grafana.
-  Installation is promoted through secrets, database, and mas stages.
+description: Generates platform operators, MongoDB, the IBM MAS account root, automatic generated-secret publishing, and optional Grafana.
+  Installation follows ordered operator, database, and MAS steps.
 type: application
 version: 1.0.0

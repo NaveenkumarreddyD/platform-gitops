@@ -20,7 +20,7 @@ spec:
     targetRevision: {{ .Values.platform.revision | quote }}
     path: workloads/mongodb
     plugin:
-      name: argocd-vault-plugin-helm
+      name: aws-secrets-manager-helm
       env:
         - name: HELM_VALUES
           value: |

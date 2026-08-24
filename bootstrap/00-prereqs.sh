@@ -1,48 +1,41 @@
 #!/usr/bin/env bash
-# 00 — cluster prerequisites (run ONCE per cluster, before any component).
-# Applies the GitLab CA, cluster-admin RBAC for Argo CD, the AppProject, and the AVP CMP plugin,
-# then patches the ArgoCD CR (MAS CR health checks + AVP sidecar) and rolls the repo-server.
-# Idempotent: safe to re-run. Does NOT deploy any component.
+# 00 - Configure OpenShift GitOps and AWS Secrets Manager access.
+# Idempotent: safe to re-run. Does not deploy any MAS component.
 source "$(cd "$(dirname "$0")" && pwd)/lib-bootstrap.sh"
 resolve_env "${1:-}"
 
 say "0/3 preflight"
 command -v oc >/dev/null 2>&1 || die "oc not found"
+command -v openssl >/dev/null 2>&1 || die "openssl not found"
 oc whoami >/dev/null 2>&1 || die "not logged in to OpenShift (oc login ...)"
-oc get argocd "$ARGO_NS" -n "$ARGO_NS" >/dev/null 2>&1 \
-  || die "OpenShift GitOps ArgoCD '$ARGO_NS' not found — install the operator first"
-# The GitLab repo credential MUST exist and carry the Argo CD label, or every Git fetch fails
-# silently. Do not create it here (needs the deploy token) — assert it (INSTALL.md §3).
-oc get secret gitlab-gitops-group-repo-creds -n "$ARGO_NS" >/dev/null 2>&1 \
-  || die "repo credential secret 'gitlab-gitops-group-repo-creds' missing in $ARGO_NS (INSTALL.md §3)."
+oc get argocd "$ARGO_NS" -n "$ARGO_NS" >/dev/null 2>&1 || die "OpenShift GitOps ArgoCD '$ARGO_NS' not found - install the operator first"
+oc get secret gitlab-gitops-group-repo-creds -n "$ARGO_NS" >/dev/null 2>&1 || die "repo credential secret 'gitlab-gitops-group-repo-creds' missing in $ARGO_NS (INSTALL.md)"
 lbl="$(oc get secret gitlab-gitops-group-repo-creds -n "$ARGO_NS" -o jsonpath='{.metadata.labels.argocd\.argoproj\.io/secret-type}' 2>/dev/null || true)"
-[[ "$lbl" == "repo-creds" ]] || die "repo cred secret missing label argocd.argoproj.io/secret-type=repo-creds — Argo CD ignores it (INSTALL.md §3)."
+[[ "$lbl" == "repo-creds" ]] || die "repo credential secret is not labeled as an Argo CD repo-creds secret"
 
-say "1/3 prereqs: GitLab CA, cluster-admin RBAC, AppProject, AVP plugin"
+validate_aws_identity_inputs
+validate_rolesanywhere_certificate_secret "$AWS_IDENTITY_SECRET"
+validate_rolesanywhere_certificate_secret "$AWS_PUBLISHER_IDENTITY_SECRET"
+
+say "1/3 apply Argo CD prerequisites and AWS credential process"
 oc apply -f "$ROOT/bootstrap/00-prereqs/00-gitlab-ca-configmap.yaml"
 oc apply -f "$ROOT/bootstrap/00-prereqs/01-argocd-cluster-admin-rbac.yaml"
 oc apply -f "$ROOT/bootstrap/00-prereqs/02-argo-project.yaml"
 oc apply -f "$ROOT/bootstrap/00-prereqs/03-avp-cmp-plugin.yaml"
+oc apply -f "$ROOT/bootstrap/00-prereqs/04-aws-rolesanywhere-credential-process.yaml"
 
-say "2/3 patch the ArgoCD CR (MAS CR health checks + AVP sidecar), then roll the repo-server"
+say "2/3 patch the ArgoCD CR and roll the repo-server"
 oc patch argocd "$ARGO_NS" -n "$ARGO_NS" --type merge --patch-file "$ROOT/bootstrap/argocd-cr-healthchecks-patch.yaml"
 oc patch argocd "$ARGO_NS" -n "$ARGO_NS" --type merge --patch-file "$ROOT/bootstrap/argocd-cr-avp-sidecar-patch.yaml"
-
-# Wait for the OpenShift GitOps operator to copy the ArgoCD CR change into the Deployment.
-# A plain rollout status can otherwise succeed against a still-running pod with stale AVP env.
-for i in $(seq 1 60); do
-  deployed_vault_addr="$(oc get deployment openshift-gitops-repo-server -n "$ARGO_NS" \
-    -o jsonpath='{.spec.template.spec.containers[?(@.name=="avp-helm")].env[?(@.name=="VAULT_ADDR")].value}' \
-    2>/dev/null || true)"
-  [[ "$deployed_vault_addr" == "$AVP_VAULT_ADDR" ]] && break
+for _ in $(seq 1 60); do
+  deployed_avp_type="$(oc get deployment openshift-gitops-repo-server -n "$ARGO_NS" -o jsonpath='{.spec.template.spec.containers[?(@.name=="avp-helm")].env[?(@.name=="AVP_TYPE")].value}' 2>/dev/null || true)"
+  [[ "$deployed_avp_type" == "awssecretsmanager" ]] && break
   sleep 5
 done
-[[ "${deployed_vault_addr:-}" == "$AVP_VAULT_ADDR" ]] \
-  || die "Argo CD operator did not apply AVP VAULT_ADDR=$AVP_VAULT_ADDR to the repo-server Deployment"
-
+[[ "${deployed_avp_type:-}" == "awssecretsmanager" ]] || die "Argo CD operator did not configure the AWS Secrets Manager CMP sidecar"
 oc rollout restart deploy/openshift-gitops-repo-server -n "$ARGO_NS"
 oc rollout status deploy/openshift-gitops-repo-server -n "$ARGO_NS" --timeout=10m
 verify_avp_repo_server
-say "verified live AVP sidecar VAULT_ADDR=$AVP_VAULT_ADDR"
+say "verified AWS Secrets Manager read access with short-lived Roles Anywhere credentials"
 
 say "3/3 done. NEXT: ./bootstrap/05-operators.sh $ENV"

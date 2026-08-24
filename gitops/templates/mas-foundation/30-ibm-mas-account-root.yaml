@@ -24,7 +24,7 @@ spec:
     path: root-applications/ibm-mas-account-root
     helm:
       values: |
-        avp: { name: argocd-vault-plugin-helm, values_varname: HELM_VALUES }
+        avp: { name: aws-secrets-manager-helm, values_varname: HELM_VALUES }
         account: { id: {{ .Values.account.id }} }
         source:
           repo_url: {{ .Values.source.repo_url | quote }}
@@ -46,6 +46,6 @@ spec:
       backoff: { duration: 5s, factor: 2, maxDuration: 3m }
 {{- else }}
   # Intentionally no automated syncPolicy. An operator must manually sync this
-  # Application after the prerequisites and Vault preflight checks pass.
+  # Application after the prerequisites and AWS Secrets Manager preflight checks pass.
 {{- end }}
 {{- end }}

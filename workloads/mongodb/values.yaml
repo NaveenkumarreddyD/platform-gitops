@@ -18,9 +18,9 @@ resources:
 adminUser: admin
 slsmongoUser: slsmongo
 createSccBinding: false          # platform root owns this before the operator app starts
-adminPasswordPath: "<path:secret/data/drroc4/drroc4/drrocapp/mongo#password>"
-slsmongoPasswordPath: "<path:secret/data/drroc4/drroc4/drrocapp/sls-mongo#password>"
-# Pinned Mongo CA (base64 PEM), generated once and manually stored in Vault.
+adminPasswordPath: "<path:mas/drroc4/drroc4/drrocapp/mongo#password>"
+slsmongoPasswordPath: "<path:mas/drroc4/drroc4/drrocapp/sls-mongo#password>"
+# Pinned Mongo CA (base64 PEM), generated once and stored in AWS Secrets Manager.
 # The platform Application overrides these example paths for each environment.
-mongoCaCert: "<path:secret/data/drroc4/drroc4/drrocapp/mongo-ca#tls_crt_b64>"
-mongoCaKey: "<path:secret/data/drroc4/drroc4/drrocapp/mongo-ca#tls_key_b64>"
+mongoCaCert: "<path:mas/drroc4/drroc4/drrocapp/mongo-ca#tls_crt_b64>"
+mongoCaKey: "<path:mas/drroc4/drroc4/drrocapp/mongo-ca#tls_key_b64>"

@@ -1,0 +1,6 @@
+{{- if not .Values.accountId }}{{ fail "accountId is required" }}{{ end -}}
+{{- if not .Values.clusterId }}{{ fail "clusterId is required" }}{{ end -}}
+{{- if not .Values.instanceId }}{{ fail "instanceId is required" }}{{ end -}}
+{{- if not .Values.droNamespace }}{{ fail "droNamespace is required" }}{{ end -}}
+{{- if not .Values.slsNamespace }}{{ fail "slsNamespace is required" }}{{ end -}}
+{{- if lt (int .Values.pollSeconds) 60 }}{{ fail "pollSeconds must be at least 60" }}{{ end -}}

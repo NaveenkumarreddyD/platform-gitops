@@ -1,33 +1,24 @@
-# Bootstrap — decoupled component install
+# Bootstrap
 
-Run these in order, per cluster (each asserts its prerequisite and prints the next step).
-There is no app-of-apps and no `installStage`; ordering is enforced by the scripts.
+These four scripts are small, idempotent wrappers around `oc` and `helm`:
 
 ```text
-00-prereqs.sh <env>       GitLab CA, RBAC, AppProject, AVP plugin, ArgoCD CR patches   (once per cluster)
-05-operators.sh <env>     OLM operators: cert-manager (+ grafana-operator if enabled) → waits for CRDs
-10-vault.sh <env>         deploy Vault           → then init + unseal (manual, INSTALL.md §4)
-11-vault-config.sh <env>  kv-v2 + k8s auth + policies + roles   (needs VAULT_ROOT_TOKEN)
-seed-secrets.sh <env>     seed static secrets from EXPORTED vars (derives all Vault paths)
-12-vault-verify.sh <env>  READ-ONLY Kubernetes auth: assert every required secret is seeded
-20-mongodb.sh <env>       select compatible operator → wait for CRD → deploy MongoDB → wait Running
-30-mas.sh <env>           deploy MAS             → refuses unless Mongo Running + Vault verified
+00-prereqs.sh <env>    Configure Argo CD and AWS Secrets Manager workload access
+05-operators.sh <env>  Install/verify cert-manager and optional platform operators
+20-mongodb.sh <env>    Install the compatible MongoDB operator and database
+30-mas.sh <env>        Apply the IBM MAS account root and generated-secret publisher
 ```
 
-cert-manager is installed here (component 05), early and decoupled, because MongoDB's Issuer/
-Certificate and MAS both need it. It mirrors IBM's own operator (openshift-cert-manager-operator,
-stable-v1, cert-manager-operator namespace). Add more OLM operators via the reusable
-`workloads/operators` chart — see `gitops/values.yaml` (`certManagerOperator`, `grafanaOperator`).
+Each step checks its prerequisites and stops with a useful error. Argo CD remains the
+reconciler; the scripts do not implement a second deployment engine.
 
-Seeding the actual secret material (§V.4) stays manual — the values are per-cluster and the
-Vault unseal shares must never live in the cluster. The seed script preserves existing MongoDB
-passwords and generated certificates on rerun; rotation requires `ROTATE_MONGO_PASSWORDS=true`.
-`../scripts/status.sh <env>` shows all four core components at a glance.
+Before `00-prereqs`, create:
 
-Create repository credentials directly in OpenShift; the committed file under
-`00-prereqs/repo-creds/` is an example and must never contain a real token.
+- `openshift-gitops/aws-secrets-manager-auth` ConfigMap
+- `openshift-gitops/aws-rolesanywhere-avp` Secret
+- `openshift-gitops/aws-secrets-manager-publisher-auth` ConfigMap
+- `openshift-gitops/aws-rolesanywhere-publisher` Secret
+- `openshift-gitops/gitlab-gitops-group-repo-creds` Secret
 
-`argocd-cr-avp-sidecar-patch.yaml` downloads AVP and Helm during repo-server startup,
-so it requires outbound access to GitHub and `get.helm.sh`. For restricted clusters,
-build an approved internal image containing both binaries and customize
-`argocd-cr-avp-sidecar-patch-internal-image.example.yaml`.
+The complete procedure and direct-command alternative are in
+`../INSTALL.md` and `../MANUAL-INSTALL.md`.

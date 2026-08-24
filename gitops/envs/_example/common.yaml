@@ -1,10 +1,11 @@
 # cluster-scope (same for every instance on this cluster)
 clusterId: CHANGE_ME            # e.g. doc4 — also the folder name envs/<clusterId>/
 account: { id: CHANGE_ME }      # MUST be unique per env (usually = clusterId). Drives the
-                                # config-repo glob "<account>/*" and every Vault path prefix.
+                                # config-repo glob "<account>/*" and AWS secret prefix.
 storageClass: isilon
-vault: { host: vault.apps.CHANGE_ME.lac1.biz }
-# Point every env at the Vault-workaround branches (not main / not a stock IBM tag):
+# IBM source is the unmodified official release tag.
 platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: "main" }
-source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git", revision: "8.4.0-vault-patch" }
+source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.4.2" }
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: "main" }
+# Optional when DRO uses a non-default namespace.
+generatedSecretsPublisher: { droNamespace: ibm-software-central }

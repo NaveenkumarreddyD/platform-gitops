@@ -1,0 +1,36 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: aws-generated-secrets-publisher
+  namespace: {{ .Values.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: aws-generated-secrets-publisher-{{ .Values.clusterId }}
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["ibm-data-reporter-operator-api-token"]
+    verbs: ["get"]
+  - apiGroups: [""]
+    resources: ["configmaps"]
+    resourceNames: ["sls-suite-registration"]
+    verbs: ["get"]
+  - apiGroups: ["route.openshift.io"]
+    resources: ["routes"]
+    resourceNames: ["ibm-data-reporter"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: aws-generated-secrets-publisher-{{ .Values.clusterId }}
+subjects:
+  - kind: ServiceAccount
+    name: aws-generated-secrets-publisher
+    namespace: {{ .Values.namespace }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: aws-generated-secrets-publisher-{{ .Values.clusterId }}

@@ -1,0 +1,102 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: aws-generated-secrets-publisher
+  namespace: {{ .Values.namespace }}
+  labels:
+    app.kubernetes.io/name: aws-generated-secrets-publisher
+    app.kubernetes.io/part-of: mas-platform
+spec:
+  replicas: 1
+  revisionHistoryLimit: 2
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: aws-generated-secrets-publisher
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: aws-generated-secrets-publisher
+        app.kubernetes.io/part-of: mas-platform
+    spec:
+      serviceAccountName: aws-generated-secrets-publisher
+      automountServiceAccountToken: true
+      initContainers:
+        - name: install-aws-signing-helper
+          image: registry.access.redhat.com/ubi9/ubi:9.6
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: AWS_SIGNING_HELPER_VERSION, value: {{ .Values.signingHelper.version | quote }} }
+            - { name: AWS_SIGNING_HELPER_SHA256, value: {{ .Values.signingHelper.sha256 | quote }} }
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -euo pipefail
+              curl -fL "https://rolesanywhere.amazonaws.com/releases/${AWS_SIGNING_HELPER_VERSION}/X86_64/Linux/Amzn2023/aws_signing_helper" -o /custom-tools/aws_signing_helper
+              printf '%s  %s\n' "$AWS_SIGNING_HELPER_SHA256" /custom-tools/aws_signing_helper | sha256sum -c -
+              chmod 0555 /custom-tools/aws_signing_helper
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: custom-tools, mountPath: /custom-tools }
+      containers:
+        - name: publisher
+          image: {{ .Values.image | quote }}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "/opt/publisher/publish.sh"]
+          env:
+            - { name: ACCOUNT_ID, value: {{ .Values.accountId | quote }} }
+            - { name: CLUSTER_ID, value: {{ .Values.clusterId | quote }} }
+            - { name: INSTANCE_ID, value: {{ .Values.instanceId | quote }} }
+            - { name: DRO_NAMESPACE, value: {{ .Values.droNamespace | quote }} }
+            - { name: SLS_NAMESPACE, value: {{ .Values.slsNamespace | quote }} }
+            - { name: POLL_SECONDS, value: {{ .Values.pollSeconds | quote }} }
+            - name: AWS_REGION
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: region } }
+            - name: AWS_ROLE_ARN
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: roleArn } }
+            - name: AWS_ROLES_ANYWHERE_PROFILE_ARN
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: profileArn } }
+            - name: AWS_ROLES_ANYWHERE_TRUST_ANCHOR_ARN
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: trustAnchorArn } }
+            - name: AWS_ROLE_SESSION_NAME
+              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: roleSessionName } }
+            - { name: AWS_CONFIG_FILE, value: /etc/aws/config }
+            - { name: AWS_PROFILE, value: default }
+            - { name: AWS_SDK_LOAD_CONFIG, value: "1" }
+            - { name: AWS_EC2_METADATA_DISABLED, value: "true" }
+            - { name: HOME, value: /tmp/home }
+          resources:
+{{ toYaml .Values.resources | indent 12 }}
+          startupProbe:
+            exec: { command: ["test", "-f", "/tmp/publisher-started"] }
+            failureThreshold: 30
+            periodSeconds: 10
+          readinessProbe:
+            exec: { command: ["test", "-f", "/tmp/last-success"] }
+            failureThreshold: 3
+            periodSeconds: 10
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: publisher-script, mountPath: /opt/publisher/publish.sh, subPath: publish.sh, readOnly: true }
+            - { name: custom-tools, mountPath: /usr/local/bin/aws_signing_helper, subPath: aws_signing_helper, readOnly: true }
+            - { name: credential-process, mountPath: /usr/local/bin/aws-rolesanywhere-credential-process, subPath: credential-process.sh, readOnly: true }
+            - { name: credential-process, mountPath: /etc/aws/config, subPath: config, readOnly: true }
+            - { name: workload-identity, mountPath: /var/run/secrets/aws/roles-anywhere, readOnly: true }
+            - { name: tmp, mountPath: /tmp }
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      volumes:
+        - name: publisher-script
+          configMap: { name: aws-generated-secrets-publisher, defaultMode: 365 }
+        - { name: custom-tools, emptyDir: {} }
+        - name: credential-process
+          configMap: { name: aws-rolesanywhere-credential-process, defaultMode: 365 }
+        - name: workload-identity
+          secret: { secretName: {{ .Values.identitySecret }}, defaultMode: 288 }
+        - { name: tmp, emptyDir: {} }

@@ -1,14 +1,14 @@
 # Global defaults. Environment files override only values that differ per cluster.
 # Which component this render emits. The bootstrap scripts set it per component
-# (--set component=vault|mongodb-operator|mongodb-instance|mas|grafana).
+# (--set component=operators|mongodb-operator|mongodb-instance|mas|grafana).
 # This replaces the old installStage app-of-apps staging: components are now independent
-# Applications applied directly by their own script, coupled only through Vault secrets.
+# Applications applied directly by their own script, coupled through AWS Secrets Manager.
 component: all
 project: mas
 argoNamespace: openshift-gitops
 
 platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: main }
-source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git", revision: "8.4.0-vault-patch" }
+source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.4.2" }
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: main }
 
 # No default account — each env MUST set its own UNIQUE account.id in
@@ -17,18 +17,22 @@ generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", r
 # would cross-generate each other's apps. validate.yaml fails the render if it's unset.
 account: { id: "" }
 storageClass: isilon
-vault:
-  chartVersion: "0.32.0"
-  imageRepository: registry.connect.redhat.com/hashicorp/vault
-  imageTag: "1.21.2-ubi"
-  dataSize: 2Gi
-  auditSize: 1Gi
-  replicas: 3
-  host: vault.example.local
-
 # With the mas component, IBM's account root takes over orchestration using its own
-# ApplicationSets, sync waves, health checks, and patched Vault write-back jobs.
+# ApplicationSets, sync waves, and health checks from the official release.
 accountRoot: { autoSync: true, clusterAdminRole: true, applicationAdminRole: true }
+# IBM 8.4.2 SLS/DRO write-back hooks accept only static AWS access keys. Keep those
+# hooks disabled and use this controller to publish the generated values automatically
+# with a separate IAM Roles Anywhere write role.
+generatedSecretsPublisher:
+  enabled: true
+  namespace: openshift-gitops
+  droNamespace: ibm-software-central
+  pollSeconds: 300
+  authConfigMap: aws-secrets-manager-publisher-auth
+  identitySecret: aws-rolesanywhere-publisher
+  image: "quay.io/ibmmas/cli@sha256:887cc3059a04601241687711df0c03d662931e6719121eec0eb0490001b2c8b9"
+  signingHelperVersion: "1.8.4"
+  signingHelperSha256: "b7568acd6e1517a4e1adaee68d52bfd6284a0e5305677166cd83d43a07c815c9"
 grafana: { namespace: grafana }
 # Default supports OpenShift 4.17/4.18. bootstrap/20-mongodb.sh detects the live
 # OpenShift minor and overrides this with the matching official operator release.

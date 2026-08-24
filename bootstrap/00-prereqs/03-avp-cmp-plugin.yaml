@@ -1,5 +1,5 @@
-# Argo CD Vault Plugin: the CMP plugin definition. Mounted by the repo-server AVP sidecar
-# (added by ../argocd-cr-avp-sidecar-patch.yaml). Day-0 prerequisite.
+# Argo CD Config Management Plugin for Helm plus AWS Secrets Manager substitution.
+# The argocd-vault-plugin binary supports AWS Secrets Manager despite its product name.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -10,7 +10,7 @@ data:
     apiVersion: argoproj.io/v1alpha1
     kind: ConfigManagementPlugin
     metadata:
-      name: argocd-vault-plugin-helm
+      name: aws-secrets-manager-helm
     spec:
       init:
         command: ["bash","-c"]
@@ -18,7 +18,11 @@ data:
       generate:
         command: ["bash","-c"]
         args:
-          - 'helm template "$ARGOCD_APP_NAME" --namespace "$ARGOCD_APP_NAMESPACE" --include-crds -f <(echo "$ARGOCD_ENV_HELM_VALUES") . | argocd-vault-plugin generate -'
+          - |
+            unset ARGOCD_ENV_AVP_TYPE ARGOCD_ENV_AVP_PATH_VALIDATION
+            unset ARGOCD_ENV_AWS_ACCESS_KEY_ID ARGOCD_ENV_AWS_SECRET_ACCESS_KEY ARGOCD_ENV_AWS_SESSION_TOKEN
+            helm template "$ARGOCD_APP_NAME" --namespace "$ARGOCD_APP_NAMESPACE" +              --include-crds -f <(echo "$ARGOCD_ENV_HELM_VALUES") . |
+              argocd-vault-plugin generate -
       discover:
         find:
           command: ["sh","-c"]

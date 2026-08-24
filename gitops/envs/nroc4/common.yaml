@@ -1,7 +1,6 @@
 clusterId: nroc4
 account: { id: nroc4 }       # per-env account → ArgoCD globs only nroc4/* in the config repo
 storageClass: isilon
-vault: { host: vault.apps.nroc4.lac1.biz }
 platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: "main" }
-source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git", revision: "8.4.0-vault-patch" }
+source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.4.2" }
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: "main" }

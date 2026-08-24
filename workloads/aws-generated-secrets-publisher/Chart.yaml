@@ -1,0 +1,5 @@
+apiVersion: v2
+name: aws-generated-secrets-publisher
+description: Publishes generated MAS SLS and DRO registration values to AWS Secrets Manager.
+type: application
+version: 1.0.0

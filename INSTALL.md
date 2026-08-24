@@ -1,194 +1,309 @@
-# IBM MAS installation (per cluster)
+# IBM MAS installation with AWS Secrets Manager
 
-> Prefer the raw commands (or want to understand what each script does under the hood)?
-> See [MANUAL-INSTALL.md](MANUAL-INSTALL.md) — the same steps expanded into literal
-> `oc` / `helm` / `vault` commands, no bootstrap scripts.
+This is the supported fresh-install procedure. The IBM source is the unmodified official
+`ibm-mas/gitops` release `8.4.2`, pinned so a later upstream release cannot change a
+running installation unexpectedly.
 
-Run the steps in order. Examples use **drroc4** — for another env, replace `drroc4/drroc4`
-(account/cluster) and `drrocapp` (instance). Each env is its own cluster with its own account;
-Vault paths are `secret/<account>/<cluster>/[<instance>]/...`. The Vault policy files wildcard the
-account, so step 6 is identical for every env.
+Examples use `drroc4`. Replace it with the required environment name.
 
-## 1. Prerequisites
+## 1. Architecture and access
 
-- Tools: `oc`, `helm`, `git`, `openssl`, `jq`.
-- Cluster: OpenShift 4.17-4.21, OpenShift GitOps installed (`openshift-gitops`), `isilon` storage class, image pull +
-  egress to GitHub/`get.helm.sh` (or use the internal-image AVP patch), DNS for
-  `vault.apps.drroc4.lac1.biz`, Oracle reachable.
-- All three repos pushed to GitLab on the pinned branches:
+The on-premises workloads authenticate to AWS with IAM Roles Anywhere:
 
-| Repo | GitLab branch |
+```text
+repo-server certificate -> 15-minute read role -> manifest generation
+publisher certificate   -> 15-minute write role -> generated SLS/DRO secrets
+```
+
+Do not create an IAM user or store `AWS_ACCESS_KEY_ID` and
+`AWS_SECRET_ACCESS_KEY` in OpenShift.
+
+Create these AWS resources:
+
+1. A Roles Anywhere trust anchor for the approved issuing CA.
+2. A read profile and role for Argo CD manifest generation.
+3. A separate write profile and role for generated SLS/DRO registration.
+4. Both profiles limited to 900-second sessions with audit-friendly session names.
+5. A dedicated end-entity certificate for each workload.
+
+The role trust policy must include `sts:AssumeRole`, `sts:TagSession`, and
+`sts:SetSourceIdentity`, restricted to the expected trust anchor and AWS account:
+
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [{
+    "Effect": "Allow",
+    "Principal": {"Service": "rolesanywhere.amazonaws.com"},
+    "Action": ["sts:AssumeRole", "sts:TagSession", "sts:SetSourceIdentity"],
+    "Condition": {
+      "ArnEquals": {
+        "aws:SourceArn": "arn:aws:rolesanywhere:<region>:<aws-account>:trust-anchor/<id>"
+      },
+      "StringEquals": {
+        "aws:SourceAccount": "<aws-account>"
+      }
+    }
+  }]
+}
+```
+
+The read policy needs `secretsmanager:GetSecretValue` and
+`secretsmanager:DescribeSecret` on:
+
+```text
+arn:aws:secretsmanager:<region>:<aws-account>:secret:mas/<account>/<cluster>/*
+```
+
+The publisher policy needs only `secretsmanager:CreateSecret`,
+`secretsmanager:DescribeSecret`, `secretsmanager:GetSecretValue`, and
+`secretsmanager:PutSecretValue` on these two resources. AWS appends characters to a
+secret ARN, so retain the final wildcard:
+
+```text
+arn:aws:secretsmanager:<region>:<aws-account>:secret:mas/<account>/<cluster>/dro-??????
+arn:aws:secretsmanager:<region>:<aws-account>:secret:mas/<account>/<cluster>/<instance>/sls-??????
+```
+
+Do not grant the publisher `DeleteSecret`, `ListSecrets`, or access to deployment
+credentials. Use certificate subject conditions in the role trust policies when the
+company PKI exposes stable subject attributes.
+
+If the secrets use a customer-managed KMS key, allow `kms:Decrypt` to the read role and
+the minimum encrypt/data-key permissions required by Secrets Manager to the publisher.
+Restrict both with `kms:ViaService=secretsmanager.<region>.amazonaws.com`.
+
+Allow HTTPS egress from the repo-server and publisher to the regional IAM Roles Anywhere
+and Secrets Manager endpoints.
+
+For on-premises clusters, prefer **interface VPC endpoints (AWS PrivateLink)** over public
+egress so no traffic leaves the AWS network. All three services support them:
+`com.amazonaws.<region>.rolesanywhere`, `com.amazonaws.<region>.sts`, and
+`com.amazonaws.<region>.secretsmanager` (plus `com.amazonaws.<region>.kms` for a CMK).
+Reach them over Direct Connect or VPN, and resolve the service DNS to the private endpoint
+IPs from on-premises (Route 53 Resolver inbound endpoint, or `--endpoint` on the signing
+helper). When using endpoints, gate access with `aws:SourceVpce` on the role and secret
+policies rather than `aws:SourceIp` — the source-IP condition is not evaluated for requests
+that arrive through a VPC endpoint. Note that endpoint policies do not apply to the Roles
+Anywhere `CreateSession` action, so enforce scope on the role and profile.
+
+Argo CD caches generated manifests after substitution. Restrict access to the repo-server,
+Redis, Argo CD API/UI, and application manifests to the same administrative boundary as
+the referenced secrets.
+
+AWS references:
+
+- https://docs.aws.amazon.com/rolesanywhere/latest/userguide/trust-model.html
+- https://docs.aws.amazon.com/sdkref/latest/guide/access-rolesanywhere.html
+
+## 2. Required tools and repositories
+
+Required locally: `oc`, `helm`, `git`, `openssl`, `jq`, and Python 3.
+
+Required repositories:
+
+| Repository | Source |
 |---|---|
-| `platform-gitops` | `main` |
-| `mas-gitops-config` | `main` |
-| `ibm-mas-gitops` | `8.4.0-vault-patch` |
+| Platform | your `platform-gitops` repository |
+| Configuration | your `mas-gitops-config` repository |
+| IBM MAS GitOps | `https://github.com/ibm-mas/gitops.git`, tag `8.4.2` |
+
+The IBM repository is read directly from GitHub. Do not apply local patches to it.
+
+Create the GitLab repository credential for the two private repositories:
 
 ```bash
-git ls-remote https://gitlab.lac1.biz/gitops/platform-gitops.git  refs/heads/main
-git ls-remote https://gitlab.lac1.biz/gitops/mas-gitops-config.git refs/heads/main
-git ls-remote https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git    refs/heads/8.4.0-vault-patch
+oc -n openshift-gitops create secret generic gitlab-gitops-group-repo-creds \
+  --from-literal=type=git \
+  --from-literal=url=https://gitlab.lac1.biz/gitops \
+  --from-literal=username='<deploy-user>' \
+  --from-literal=password='<deploy-token>' \
+  --dry-run=client -o yaml |
+oc label --local -f - argocd.argoproj.io/secret-type=repo-creds -o yaml |
+oc apply -f -
 ```
 
-## 2. Validate
+## 3. Configure the workload identity
+
+Create the non-secret read-role settings:
 
 ```bash
-./scripts/preflight-consistency.sh drroc4       # must print PASS
-helm template platform gitops \
-  -f gitops/envs/drroc4/common.yaml -f gitops/envs/drroc4/values.yaml --set component=all >/dev/null
+oc -n openshift-gitops create configmap aws-secrets-manager-auth \
+  --from-literal=region='<aws-region>' \
+  --from-literal=roleArn='arn:aws:iam::<aws-account>:role/<role>' \
+  --from-literal=profileArn='arn:aws:rolesanywhere:<region>:<aws-account>:profile/<id>' \
+  --from-literal=trustAnchorArn='arn:aws:rolesanywhere:<region>:<aws-account>:trust-anchor/<id>' \
+  --from-literal=roleSessionName='mas-gitops-<cluster>' \
+  --dry-run=client -o yaml | oc apply -f -
 ```
 
-## 3. Bootstrap Argo CD
-
-Create the GitLab repo credential (the `repo-creds` label is required, or Git fetch fails).
-Export the deploy-token creds (this shell only), then apply:
+Create the identity Secret from the dedicated certificate and unencrypted private key:
 
 ```bash
-export GITLAB_USER='...'
-export GITLAB_TOKEN='...'
-oc apply -f - <<EOF
-apiVersion: v1
-kind: Secret
-metadata:
-  name: gitlab-gitops-group-repo-creds
-  namespace: openshift-gitops
-  labels: { argocd.argoproj.io/secret-type: repo-creds }
-type: Opaque
-stringData:
-  type: git
-  url: https://gitlab.lac1.biz/gitops
-  username: "${GITLAB_USER}"
-  password: "${GITLAB_TOKEN}"
-EOF
-unset GITLAB_TOKEN
-
-./bootstrap/00-prereqs.sh drroc4
+oc -n openshift-gitops create secret generic aws-rolesanywhere-avp \
+  --from-file=certificate.pem=/secure/path/workload.crt \
+  --from-file=private-key.pem=/secure/path/workload.key \
+  --from-file=intermediates.pem=/secure/path/intermediate-chain.pem \
+  --dry-run=client -o yaml | oc apply -f -
 ```
 
-(Restricted cluster: apply `bootstrap/argocd-cr-avp-sidecar-patch-internal-image.example.yaml`
-before `00-prereqs.sh`.)
+The intermediate file is optional when the leaf certificate chains directly to the trust
+anchor. Never commit the certificate's private key. Rotate this identity through the
+company PKI and revoke it immediately if it is exposed.
 
-> Operators, Vault, MongoDB, and MAS are independent apps — run their scripts in order (below).
-> Each refuses to run until its prerequisite is met. `./scripts/status.sh drroc4` shows all of them.
-
-## 4. Operators (cert-manager)
+Create the publisher settings with the separate write role and profile:
 
 ```bash
-./bootstrap/05-operators.sh drroc4       # installs cert-manager; waits for its CRDs
+oc -n openshift-gitops create configmap aws-secrets-manager-publisher-auth \
+  --from-literal=region='<aws-region>' \
+  --from-literal=roleArn='arn:aws:iam::<aws-account>:role/<publisher-role>' \
+  --from-literal=profileArn='arn:aws:rolesanywhere:<region>:<aws-account>:profile/<publisher-profile-id>' \
+  --from-literal=trustAnchorArn='arn:aws:rolesanywhere:<region>:<aws-account>:trust-anchor/<id>' \
+  --from-literal=roleSessionName='mas-publisher-<cluster>' \
+  --dry-run=client -o yaml | oc apply -f -
+
+oc -n openshift-gitops create secret generic aws-rolesanywhere-publisher \
+  --from-file=certificate.pem=/secure/path/publisher.crt \
+  --from-file=private-key.pem=/secure/path/publisher.key \
+  --from-file=intermediates.pem=/secure/path/intermediate-chain.pem \
+  --dry-run=client -o yaml | oc apply -f -
 ```
 
-(Cluster already has cert-manager? Set `enable.certManager: false` in
-`gitops/envs/drroc4/values.yaml`; still run this step so it verifies the existing CRDs.)
+The publisher certificate and private key are workload identity material, not AWS access
+keys. The AWS helper exchanges them for a 15-minute session only when the publisher calls
+Secrets Manager.
 
-## 5. Deploy Vault, then init + unseal
+## 4. Create the static deployment secrets
+
+Use an approved federated administrator session, such as AWS IAM Identity Center. The
+administrator role may create and rotate secrets; the repo-server role remains read-only.
+
+Secret names and fields:
+
+| Secret name | Required fields |
+|---|---|
+| `mas/<account>/<cluster>/entitlement` | `image_pull_secret_b64` |
+| `mas/<account>/<cluster>/<instance>/license` | `license_file` |
+| `mas/<account>/<cluster>/<instance>/mongo-ca` | `tls_crt_b64`, `tls_key_b64` |
+| `mas/<account>/<cluster>/<instance>/mongo` | `username`, `password`, `host`, `ca.crt` |
+| `mas/<account>/<cluster>/<instance>/sls-mongo` | `username`, `password`, `ca.crt` |
+| `mas/<account>/<cluster>/<instance>/jdbc-system` | `username`, `password`, `jdbc_url` |
+| `mas/<account>/<cluster>/<instance>/certs/public` | `tls_crt_b64`, `tls_key_b64`, `ca_crt_b64` |
+| `mas/<account>/<cluster>/<instance>/manage-crypto` | required only when reusing a Manage database: `cryptoKey`, `cryptoxKey` |
+| `mas/<account>/<cluster>/<instance>/manage-cos` | optional S3 attachment fields documented in the config repository |
+
+Encoding rules:
+
+- `license_file`, Mongo `ca.crt`, and SLS Mongo `ca.crt` contain their original text.
+- `tls_crt_b64`, `tls_key_b64`, and `ca_crt_b64` contain one base64 encoding of the file.
+- `image_pull_secret_b64` is one base64 encoding of the complete Docker config JSON.
+- Each secret value is one JSON object; field names are case-sensitive.
+
+Create or update a secret without putting its value on the command line:
 
 ```bash
-./bootstrap/10-vault.sh drroc4
-oc get pods -n vault -w                   # wait for vault-0/1/2
-```
-
-Initialize once (the output is the only copy of the root token + unseal keys):
-
-```bash
+export AWS_REGION='<aws-region>'
+export SECRET_ID='mas/<account>/<cluster>/<instance>/jdbc-system'
 umask 077
-oc exec -n vault vault-0 -- env \
-  VAULT_ADDR=http://127.0.0.1:8200 \
-  vault operator init -key-shares=5 -key-threshold=3 -format=json > "$HOME/vault-init-drroc4.json"
+PAYLOAD=$(mktemp)
+trap 'rm -f "$PAYLOAD"' EXIT
+jq -n \
+  --arg username '<jdbc-user>' \
+  --arg password '<jdbc-password>' \
+  --arg jdbc_url 'jdbc:oracle:thin:@//host:1521/service' \
+  '{username:$username,password:$password,jdbc_url:$jdbc_url}' > "$PAYLOAD"
 
-export VAULT_ROOT_TOKEN="$(jq -r '.root_token'     "$HOME/vault-init-drroc4.json")"
-export UNSEAL_KEY_1="$(jq -r '.unseal_keys_b64[0]' "$HOME/vault-init-drroc4.json")"
-export UNSEAL_KEY_2="$(jq -r '.unseal_keys_b64[1]' "$HOME/vault-init-drroc4.json")"
-export UNSEAL_KEY_3="$(jq -r '.unseal_keys_b64[2]' "$HOME/vault-init-drroc4.json")"
+if aws secretsmanager describe-secret --region "$AWS_REGION" --secret-id "$SECRET_ID" >/dev/null 2>&1; then
+  aws secretsmanager put-secret-value --region "$AWS_REGION" \
+    --secret-id "$SECRET_ID" --secret-string "file://$PAYLOAD"
+else
+  aws secretsmanager create-secret --region "$AWS_REGION" \
+    --name "$SECRET_ID" --secret-string "file://$PAYLOAD"
+fi
 ```
 
-Unseal all pods (retries while followers join Raft):
+Use the same pattern for the remaining JSON payloads. Keep backups and rotation under the
+company's approved AWS controls.
+
+## 5. Render and validate the environment
 
 ```bash
-for pod in vault-0 vault-1 vault-2; do
-  echo "== $pod =="
-  for attempt in $(seq 1 30); do
-    if oc exec -n vault "$pod" -- env VAULT_ADDR=http://127.0.0.1:8200 \
-         vault status -format=json 2>/dev/null | grep -qE '"sealed":[[:space:]]*false'; then
-      echo "  unsealed"; break
-    fi
-    for key in "$UNSEAL_KEY_1" "$UNSEAL_KEY_2" "$UNSEAL_KEY_3"; do
-      oc exec -n vault "$pod" -- env VAULT_ADDR=http://127.0.0.1:8200 \
-        vault operator unseal "$key" >/dev/null 2>&1 || true
-    done
-    sleep 5
-  done
-done
+cd /path/to/mas-gitops-config
+./render.sh drroc4
+git diff --check
+git diff
+git add .
+git commit -m "Render drroc4 for AWS Secrets Manager"
+git push
+
+cd /path/to/platform-gitops
+./scripts/preflight-consistency.sh drroc4
+helm template platform gitops \
+  -f gitops/envs/drroc4/common.yaml \
+  -f gitops/envs/drroc4/values.yaml \
+  --set component=all >/dev/null
 ```
 
-Move `vault-init-drroc4.json` to secure escrow — never commit it or store it in a cluster Secret.
+The preflight must pass before anything is applied.
 
-## 6. Configure Vault auth
+## 6. Install in order
 
 ```bash
-./bootstrap/11-vault-config.sh drroc4     # kv-v2 + k8s auth + policies + roles (uses $VAULT_ROOT_TOKEN)
+./bootstrap/00-prereqs.sh drroc4
+./bootstrap/05-operators.sh drroc4
+./bootstrap/20-mongodb.sh drroc4
+./bootstrap/30-mas.sh drroc4
 ```
 
-## 7. Seed secrets
+What each step does:
 
-Export your inputs (this shell only), then run the seed script — it derives every Vault path
-from the env files, generates the Mongo CA, and does all the `vkv` puts:
+1. `00-prereqs` configures Argo CD, the AWS Secrets Manager plugin, and Roles Anywhere.
+2. `05-operators` installs and verifies cert-manager and any explicitly enabled operator.
+3. `20-mongodb` validates its AWS secret fields, then installs the compatible MongoDB
+   operator and database.
+4. `30-mas` validates MongoDB and the static MAS secrets, then applies the IBM account
+   root and automatic generated-secret publisher.
+
+Use `./scripts/status.sh drroc4` while the IBM applications reconcile.
+
+## 7. Automatic DRO and SLS registration
+
+IBM `8.4.2` post-sync write-back Jobs accept only static AWS access keys and publish a
+different field contract, so those two Jobs remain disabled. The platform's
+`aws-generated-secrets-publisher` Deployment replaces that function automatically.
+
+Every five minutes it checks the generated OpenShift resources, obtains a 15-minute
+publisher session through IAM Roles Anywhere, and creates or updates:
+
+```text
+mas/<account>/<cluster>/dro
+mas/<account>/<cluster>/<instance>/sls
+```
+
+It compares JSON before writing, so an unchanged registration does not create another
+Secrets Manager version. No operator publish or Argo CD refresh is required.
+
+Watch the automatic handoff without printing secret values:
 
 ```bash
-export IBM_ENTITLEMENT_KEY='...'
-export LICENSE_FILE='/secure/path/license.dat'
-export JDBC_USER='...'  JDBC_PASS='...'  JDBC_URL='jdbc:oracle:thin:@//host:1521/SERVICE'
-
-./bootstrap/seed-secrets.sh drroc4
+oc get application aws-generated-secrets-publisher-drroc4 -n openshift-gitops
+oc rollout status deployment/aws-generated-secrets-publisher \
+  -n openshift-gitops --timeout=10m
+oc logs deployment/aws-generated-secrets-publisher \
+  -n openshift-gitops --tail=100 -f
+./scripts/status.sh drroc4
 ```
 
-Optional exports (before running it):
-
-| Export | Purpose |
-|---|---|
-| `MAS_TLS_CRT_FILE` `MAS_TLS_KEY_FILE` `MAS_CA_FILE` | provide a real MAS public cert; if unset, the script seeds a **self-signed placeholder** (Manage requires a cert — it can't self-sign) |
-| `MONGO_CA_CRT_FILE` `MONGO_CA_KEY_FILE` | bring your own Mongo CA instead of generating one |
-| `MONGO_HOST` / `MAS_DOMAIN` | override the derived Mongo host / MAS domain |
-| `ROTATE_MONGO_PASSWORDS=true` | deliberately replace both Mongo passwords; omitted means preserve existing values |
-
-It does **not** seed `dro`/`sls` — the patched IBM Jobs write those in step 9. `certs/public` is
-**always** seeded (real cert if you export `MAS_TLS_*`, otherwise a self-signed placeholder). To swap
-in the real cert later, re-run the seed with `MAS_TLS_*`/`MAS_CA_FILE` exported, then
-`oc annotate application manage.<cluster>.<instance> -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite`.
-
-Verify, then move the PKI to escrow:
+## 8. Completion checks
 
 ```bash
-./bootstrap/12-vault-verify.sh drroc4     # must print PASS; uses read-only Kubernetes auth
+./scripts/status.sh drroc4
+oc get mongocfgs,slscfgs,jdbccfgs,bascfgs.config.mas.ibm.com -A
+oc get suites.core.mas.ibm.com -A
+oc get workspaces.core.mas.ibm.com -A
+oc get manageapps,manageworkspaces -A
 ```
 
-## 8. Deploy MongoDB
-
-```bash
-./bootstrap/20-mongodb.sh drroc4          # selects the operator for the live OCP version, then waits for Running
-```
-
-## 9. Deploy MAS
-
-```bash
-./bootstrap/30-mas.sh drroc4              # refuses unless Mongo is Running + Vault verified
-./scripts/status.sh drroc4                # watch the whole stack
-```
-
-IBM's sync waves install DRO, SLS, Suite, configs, Workspace, and Manage; the post-sync Jobs
-write SLS/DRO registration into Vault. Don't hand-create those resources.
-
-## 10. Done when
-
-- All Argo CD Applications are `Synced` + `Healthy`.
-- `MongoCfg`, `SlsCfg`, `JdbcCfg`, `BasCfg`, `Suite`, `Workspace`, `ManageApp`, `ManageWorkspace` are Ready.
-- The MAS/Manage routes serve the expected public cert and a login works.
-
-```bash
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-  VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
-  vault kv get secret/drroc4/drroc4/dro
-oc exec -n vault vault-0 -- env VAULT_ADDR=http://127.0.0.1:8200 \
-  VAULT_TOKEN="$VAULT_ROOT_TOKEN" \
-  vault kv get secret/drroc4/drroc4/drrocapp/sls
-```
-
-After install, stop using the root token for day-2 work and keep the unseal shares separated.
+The installation is complete when Argo CD is synced and healthy, all system
+configurations are Ready, the Suite and Manage workspace are Ready, and the MAS and
+Manage login routes work.

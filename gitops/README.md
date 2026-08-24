@@ -1,28 +1,26 @@
-# Component chart
+# Platform component chart
 
-This chart renders **independent** Argo CD Applications — one component per render, selected by
-`--set component=<name>`. There is no app-of-apps parent and no `installStage`: the bootstrap
-scripts (`bootstrap/10-vault.sh`, `20-mongodb.sh`, `30-mas.sh`) each render and apply one
-component. Components couple only through Vault secret paths.
+This chart renders independent Argo CD Applications selected with
+`--set component=<name>`.
 
-```text
-templates/validate.yaml           render-time guards (valid component, identity set, patched IBM branch)
-templates/operators/              OLM operators (cert-manager, grafana-op) — component: operators (wave 5)
-templates/secrets-vault/          Vault service              — component: vault    (wave 10)
-templates/database-mongodb/       namespace/SCC + operator, then instance — components: mongodb-operator/mongodb-instance
-templates/mas-foundation/         IBM MAS account root       — component: mas      (wave 30)
-templates/grafana/                optional Grafana instance  — component: grafana  (wave 60)
-```
+| Component | Purpose |
+|---|---|
+| `operators` | cert-manager and optional platform operators |
+| `mongodb-operator` | MongoDB Kubernetes operator |
+| `mongodb-instance` | dedicated MAS MongoDB instance |
+| `mas` | official IBM MAS account root and automatic SLS/DRO secret publisher |
+| `grafana` | optional Grafana instance |
+| `all` | render validation and CI convenience |
 
-The `operators` component renders the reusable `workloads/operators` chart (Namespace +
-OperatorGroup + Subscription per operator) with the list built from `certManagerOperator` +
-(when `enable.grafana`) `grafanaOperator` in `gitops/values.yaml`. Add operators there.
+There is no install-stage switch and no parent app-of-apps in this chart. The bootstrap
+wrappers enforce the few cross-component readiness gates. After the `mas` component is
+applied, IBM's official `8.4.2` account root owns the MAS cluster and instance
+application tree.
 
-`component` values: `operators`, `vault`, `mongodb-operator`, `mongodb-instance`, `mongodb`, `mas`,
-`grafana`, or `all`. `mongodb` and `all` are render/CI conveniences; the installer deliberately
-applies the two MongoDB components separately. Within a component, ordering is driven by the `argocd.argoproj.io/sync-wave`
-annotation — never by file or directory names; the number prefix on each file just mirrors its wave.
+The SLS/DRO publisher uses a separate IAM Roles Anywhere write role to copy generated
+registration values into AWS Secrets Manager. IBM's static-key write-back Jobs remain
+disabled; publishing is automatic and does not require an operator command.
 
-Ordering *between* components is enforced by the bootstrap scripts (each asserts its prerequisite),
-not by this chart. Grafana is the sole optional switch (`enable.grafana`); when enabled,
-`05-operators.sh` waits for its manually approved pinned operator before applying the Grafana app.
+All IBM applications use the `aws-secrets-manager-helm` Argo CD plugin configuration.
+Secret placeholders are resolved from AWS Secrets Manager under
+`mas/<account>/<cluster>/...`.

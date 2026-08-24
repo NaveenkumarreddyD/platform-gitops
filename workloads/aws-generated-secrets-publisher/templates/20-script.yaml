@@ -1,0 +1,129 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: aws-generated-secrets-publisher
+  namespace: {{ .Values.namespace }}
+data:
+  publish.sh: |
+    #!/usr/bin/env bash
+    set -uo pipefail
+
+    log() { printf '%s %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+    same_json() {
+      python3 - "$1" "$2" <<'PY'
+    import json
+    import sys
+    try:
+        with open(sys.argv[1], encoding="utf-8") as current_file:
+            current = json.load(current_file)
+        with open(sys.argv[2], encoding="utf-8") as desired_file:
+            desired = json.load(desired_file)
+    except (OSError, ValueError):
+        sys.exit(1)
+    sys.exit(0 if current == desired else 1)
+    PY
+    }
+
+    publish_secret() {
+      local secret_id="$1" desired_file="$2" current_file
+      current_file="$(mktemp /tmp/current.XXXXXX)" || return 1
+
+      if aws secretsmanager describe-secret --secret-id "$secret_id" >/dev/null 2>&1; then
+        if ! aws secretsmanager get-secret-value --secret-id "$secret_id" \
+          --query SecretString --output text > "$current_file"; then
+          rm -f "$current_file"
+          return 1
+        fi
+        if same_json "$current_file" "$desired_file"; then
+          log "$secret_id is current"
+        else
+          aws secretsmanager put-secret-value --secret-id "$secret_id" \
+            --secret-string "file://$desired_file" >/dev/null || {
+              rm -f "$current_file"
+              return 1
+            }
+          log "$secret_id updated"
+        fi
+      else
+        aws secretsmanager create-secret --name "$secret_id" \
+          --secret-string "file://$desired_file" >/dev/null || {
+            rm -f "$current_file"
+            return 1
+          }
+        log "$secret_id created"
+      fi
+      rm -f "$current_file"
+    }
+
+    sync_dro() {
+      local host token ca payload secret_id
+      if ! oc get route/ibm-data-reporter -n "$DRO_NAMESPACE" >/dev/null 2>&1 ||
+         ! oc get secret/ibm-data-reporter-operator-api-token -n "$DRO_NAMESPACE" >/dev/null 2>&1; then
+        log "DRO registration is not ready in $DRO_NAMESPACE"
+        return 0
+      fi
+
+      host="$(oc get route/ibm-data-reporter -n "$DRO_NAMESPACE" -o jsonpath='{.spec.host}')" || return 1
+      token="$(oc get secret/ibm-data-reporter-operator-api-token -n "$DRO_NAMESPACE" -o jsonpath='{.data.token}' | base64 -d)" || return 1
+      ca="$(oc get secret/ibm-data-reporter-operator-api-token -n "$DRO_NAMESPACE" -o jsonpath='{.data.ca\.crt}' | base64 -d)" || return 1
+      [[ -n "$host" && -n "$token" && -n "$ca" ]] || { log "DRO registration is incomplete"; return 1; }
+
+      payload="$(mktemp /tmp/dro.XXXXXX)" || return 1
+      DRO_URL="https://$host" DRO_TOKEN="$token" DRO_CA="$ca" python3 > "$payload" <<'PY'
+    import json
+    import os
+    import sys
+    json.dump({"url": os.environ["DRO_URL"], "api_token": os.environ["DRO_TOKEN"], "ca.crt": os.environ["DRO_CA"]}, sys.stdout, separators=(",", ":"))
+    PY
+      secret_id="mas/$ACCOUNT_ID/$CLUSTER_ID/dro"
+      publish_secret "$secret_id" "$payload"
+      local rc=$?
+      rm -f "$payload"
+      unset token ca
+      return "$rc"
+    }
+
+    sync_sls() {
+      local url registration_key ca payload secret_id
+      if ! oc get configmap/sls-suite-registration -n "$SLS_NAMESPACE" >/dev/null 2>&1; then
+        log "SLS registration is not ready in $SLS_NAMESPACE"
+        return 0
+      fi
+
+      url="$(oc get configmap/sls-suite-registration -n "$SLS_NAMESPACE" -o jsonpath='{.data.url}')" || return 1
+      registration_key="$(oc get configmap/sls-suite-registration -n "$SLS_NAMESPACE" -o jsonpath='{.data.registrationKey}')" || return 1
+      ca="$(oc get configmap/sls-suite-registration -n "$SLS_NAMESPACE" -o jsonpath='{.data.ca}')" || return 1
+      [[ -n "$url" && -n "$registration_key" && -n "$ca" ]] || { log "SLS registration is incomplete"; return 1; }
+
+      payload="$(mktemp /tmp/sls.XXXXXX)" || return 1
+      SLS_URL="$url" SLS_KEY="$registration_key" SLS_CA="$ca" python3 > "$payload" <<'PY'
+    import json
+    import os
+    import sys
+    json.dump({"url": os.environ["SLS_URL"], "registration_key": os.environ["SLS_KEY"], "ca.crt": os.environ["SLS_CA"]}, sys.stdout, separators=(",", ":"))
+    PY
+      secret_id="mas/$ACCOUNT_ID/$CLUSTER_ID/$INSTANCE_ID/sls"
+      publish_secret "$secret_id" "$payload"
+      local rc=$?
+      rm -f "$payload"
+      unset registration_key ca
+      return "$rc"
+    }
+
+    touch /tmp/publisher-started
+    log "publisher started; AWS credentials are issued on demand by IAM Roles Anywhere"
+    while true; do
+      failed=0
+      if aws sts get-caller-identity >/dev/null 2>&1; then
+        sync_dro || { log "DRO publish failed"; failed=1; }
+        sync_sls || { log "SLS publish failed"; failed=1; }
+      else
+        log "IAM Roles Anywhere authentication failed"
+        failed=1
+      fi
+      if [[ "$failed" == "0" ]]; then
+        date -u +%s > /tmp/last-success
+      fi
+      sleep "$POLL_SECONDS"
+    done

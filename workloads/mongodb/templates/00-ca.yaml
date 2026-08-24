@@ -1,4 +1,4 @@
-# The Mongo CA is generated once, stored in Vault, and rendered here by AVP.
+# The Mongo CA is generated once, stored in AWS Secrets Manager, and rendered here.
 # cert-manager signs the server certificate with the same CA trusted by MAS and SLS.
 apiVersion: v1
 kind: Secret
