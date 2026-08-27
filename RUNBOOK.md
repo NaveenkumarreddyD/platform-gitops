@@ -91,7 +91,7 @@ publisher key the same way against `aws-static-credentials-publisher`, restartin
 
 ## DRO or SLS registration is missing
 
-The IBM `8.4.2` write-back hooks are intentionally disabled because they require static
+The IBM `8.5.0` write-back hooks are intentionally disabled because they require static
 AWS keys. The platform publisher replaces those hooks automatically. Check it first:
 
 ```bash

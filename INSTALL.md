@@ -1,9 +1,9 @@
 # IBM MAS installation with AWS Secrets Manager
 
 This is the supported fresh-install procedure. The IBM source is the `ibm-mas/gitops`
-`8.4.2` release served from the internal fork `https://gitlab.lac1.biz/gitops/ibm-gitops.git`
-(revision `official-8.4.2`), pinned so a later upstream release cannot change a running
-installation unexpectedly. The fork is stock 8.4.2 except the JDBC config chart's
+`8.5.0` release served from the internal fork `https://gitlab.lac1.biz/gitops/ibm-gitops.git`
+(revision `official-8.5.0`), pinned so a later upstream release cannot change a running
+installation unexpectedly. The fork is stock 8.5.0 except the JDBC config chart's
 `sslEnabled` is made configurable via `jdbc_ssl_enabled` (to support a non-SSL database).
 
 Examples use `drroc4`. Replace it with the required environment name.
@@ -85,9 +85,11 @@ Required repositories:
 |---|---|
 | Platform | your `platform-gitops` repository |
 | Configuration | your `mas-gitops-config` repository |
-| IBM MAS GitOps (fork) | `https://gitlab.lac1.biz/gitops/ibm-gitops.git`, revision `official-8.4.2` |
+| IBM MAS GitOps (fork) | `https://gitlab.lac1.biz/gitops/ibm-gitops.git`, revision `official-8.5.0` |
 
-The IBM repository is read directly from GitHub. Do not apply local patches to it.
+The IBM fork is read from GitLab at the pinned revision `official-8.5.0`. It is stock
+upstream 8.5.0 plus the single reviewed JDBC `sslEnabled` change; do not add further local
+patches to it.
 
 Create the GitLab repository credential for the two private repositories:
 
@@ -232,7 +234,7 @@ Use `./scripts/status.sh drroc4` while the IBM applications reconcile.
 
 ## 7. Automatic DRO and SLS registration
 
-IBM `8.4.2` post-sync write-back Jobs accept only static AWS access keys and publish a
+IBM `8.5.0` post-sync write-back Jobs accept only static AWS access keys and publish a
 different field contract, so those two Jobs remain disabled. The platform's
 `aws-generated-secrets-publisher` Deployment replaces that function automatically.
 

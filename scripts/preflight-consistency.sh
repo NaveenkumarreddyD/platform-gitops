@@ -33,7 +33,7 @@ check(){
 check accountId "$P_ACCOUNT" "${ACCOUNT_ID:-}"
 check clusterId "$P_CLUSTER" "${CLUSTER_ID:-}"
 check instanceId "$P_INSTANCE" "${INSTANCE_ID:-}"
-check ibmRelease "$P_REV" "official-8.4.2"
+check ibmRelease "$P_REV" "official-8.5.0"
 
 config_root="$(cd "$(dirname "$ENVFILE")/.." && pwd)"
 expected="mas/${ACCOUNT_ID}/${CLUSTER_ID}"

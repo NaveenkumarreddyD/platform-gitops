@@ -14,7 +14,7 @@ This chart renders independent Argo CD Applications selected with
 
 There is no install-stage switch and no parent app-of-apps in this chart. The bootstrap
 wrappers enforce the few cross-component readiness gates. After the `mas` component is
-applied, IBM's official `8.4.2` account root owns the MAS cluster and instance
+applied, IBM's official `8.5.0` account root owns the MAS cluster and instance
 application tree.
 
 The SLS/DRO publisher uses a separate write-scoped static AWS access key, read from the

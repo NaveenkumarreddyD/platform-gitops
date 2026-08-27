@@ -8,7 +8,7 @@ project: mas
 argoNamespace: openshift-gitops
 
 platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: main }
-source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-gitops.git", revision: "official-8.4.2" }
+source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-gitops.git", revision: "official-8.5.0" }
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: main }
 
 # No default account — each env MUST set its own UNIQUE account.id in
@@ -20,7 +20,7 @@ storageClass: isilon
 # With the mas component, IBM's account root takes over orchestration using its own
 # ApplicationSets, sync waves, and health checks from the official release.
 accountRoot: { autoSync: true, clusterAdminRole: true, applicationAdminRole: true }
-# IBM 8.4.2 SLS/DRO write-back hooks publish a different field contract. Keep those hooks
+# IBM 8.5.0 SLS/DRO write-back hooks publish a different field contract. Keep those hooks
 # disabled and use this controller to publish the generated values automatically with a
 # separate write-scoped static AWS access key (Secret aws-static-credentials-publisher).
 generatedSecretsPublisher:

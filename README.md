@@ -1,8 +1,8 @@
 # IBM MAS platform GitOps
 
 This repository installs IBM Maximo Application Suite on OpenShift with Argo CD and
-AWS Secrets Manager. It uses the IBM MAS GitOps `8.4.2` release from the internal fork
-`https://gitlab.lac1.biz/gitops/ibm-gitops.git` (revision `official-8.4.2`) — stock
+AWS Secrets Manager. It uses the IBM MAS GitOps `8.5.0` release from the internal fork
+`https://gitlab.lac1.biz/gitops/ibm-gitops.git` (revision `official-8.5.0`) — stock
 upstream except that the JDBC config chart's `sslEnabled` is made configurable
 (`jdbc_ssl_enabled`) so a non-SSL database can be used.
 
