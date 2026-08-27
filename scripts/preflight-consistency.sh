@@ -37,16 +37,19 @@ check ibmRelease "$P_REV" "official-8.5.0"
 
 config_root="$(cd "$(dirname "$ENVFILE")/.." && pwd)"
 expected="mas/${ACCOUNT_ID}/${CLUSTER_ID}"
-if rg -n 'secret/data/|VAULT_ADDR|vault_writer' \
+# Use grep (present on every RHEL host) instead of ripgrep, so a bastion without
+# ripgrep installed cannot produce a false PASS on the legacy check or a false FAIL
+# on the AWS check.
+if grep -rqEI --exclude-dir=.git 'secret/data/|VAULT_ADDR|vault_writer' \
   "$ROOT/bootstrap" "$ROOT/gitops" "$ROOT/workloads" \
   "$config_root/base" "$config_root/envs" "$config_root/$ACCOUNT_ID/$CLUSTER_ID" \
-  --glob '!.git/**' >/dev/null 2>&1; then
+  2>/dev/null; then
   echo "FAIL legacy backend references remain"
   failed=1
 else
   echo "OK   no legacy backend references"
 fi
-if rg -n "<path:${expected}/" "$config_root/$ACCOUNT_ID/$CLUSTER_ID" >/dev/null 2>&1; then
+if grep -rqFI --exclude-dir=.git "<path:${expected}/" "$config_root/$ACCOUNT_ID/$CLUSTER_ID" 2>/dev/null; then
   echo "OK   AWS prefix   $expected"
 else
   echo "FAIL no rendered AWS references under $expected"
