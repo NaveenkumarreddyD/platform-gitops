@@ -13,14 +13,11 @@ Examples use `drroc4`. Replace it with the required environment name.
 > **Security note.** This procedure stores a **long-lived AWS access key in the cluster**
 > (a Kubernetes Secret in `openshift-gitops`), which is exactly what production security
 > policy usually wants to avoid. It is the simple bootstrap approach. Keep each key
-> **least-privileged** and **rotate it** on a schedule, and for production move to a
-> keyless or brokered method (for example, an external secret broker) so no static AWS
-> secret lives in the cluster.
+> **least-privileged**, **rotate it** on a schedule, and delete any key that is exposed.
 
 The on-premises workloads authenticate to AWS Secrets Manager with a **static IAM access
 key** read from a Kubernetes Secret through plain environment variables
-(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`). No certificate, external
-broker, or X.509-to-STS exchange is involved:
+(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`):
 
 ```text
 repo-server (avp-helm) reads aws-static-credentials           -> reads MAS secrets  -> manifest generation
@@ -185,6 +182,13 @@ Use the same pattern for the remaining JSON payloads. Keep backups and rotation 
 company's approved AWS controls.
 
 ## 5. Render and validate the environment
+
+First configure the environment file in the configuration repository
+(`mas-gitops-config/envs/drroc4.env`). It sets the Manage (Maximo) deployment values —
+`INSTANCE_ID`, `WORKSPACE_ID`, `MAS_EDITION`, the database schema/tablespace, the JDBC SSL
+mode (`jdbc_ssl_enabled`), the attachment provider, the encryption-key mode, and the
+optional per-bundle JMS `server.xml`. Then render, which fills those values and leaves the
+`<path:>` placeholders for AVP to resolve from AWS Secrets Manager:
 
 ```bash
 cd /path/to/mas-gitops-config

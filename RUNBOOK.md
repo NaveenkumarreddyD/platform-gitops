@@ -5,8 +5,8 @@ Use this after [INSTALL.md](INSTALL.md).
 > **Security note.** AWS authentication uses a **long-lived static access key stored in the
 > cluster** — the `aws-static-credentials` and `aws-static-credentials-publisher` Secrets in
 > `openshift-gitops`. This is the simple bootstrap approach and is what production security
-> policy usually wants to avoid. Keep each key least-privileged and rotate it on a schedule;
-> for production, plan a move to a keyless or brokered method.
+> policy usually wants to avoid. Keep each key least-privileged, rotate it on a schedule, and
+> delete any key that is exposed.
 
 ## Quick status
 
