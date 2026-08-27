@@ -33,9 +33,14 @@ spec:
             adminUser: {{ .Values.mongo.adminUser }}
             adminPasswordPath: "<path:{{ include "gitops.path" . }}/mongo#password>"
             slsmongoPasswordPath: "<path:{{ include "gitops.path" . }}/sls-mongo#password>"
-            # The manually seeded CA signs MongoDB and is also trusted by MAS/SLS.
-            mongoCaCert: "<path:{{ include "gitops.path" . }}/mongo-ca#tls_crt_b64>"
-            mongoCaKey: "<path:{{ include "gitops.path" . }}/mongo-ca#tls_key_b64>"
+            # The Mongo CA is generated and rotated by cert-manager IN-CLUSTER (private key
+            # never leaves the cluster). Its PUBLIC certificate is published to AWS Secrets
+            # Manager (mongo#ca.crt) so MAS/SLS can trust the connection.
+            publishCa:
+              enabled: true
+              image: {{ .Values.generatedSecretsPublisher.image | quote }}
+              credentialsSecret: {{ .Values.generatedSecretsPublisher.identitySecret | quote }}
+              mongoSecretPath: "{{ include "gitops.path" . }}/mongo"
   syncPolicy:
     automated: { prune: {{ .Values.auto_delete }}, selfHeal: true }
     retry:

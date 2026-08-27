@@ -20,7 +20,11 @@ slsmongoUser: slsmongo
 createSccBinding: false          # platform root owns this before the operator app starts
 adminPasswordPath: "<path:mas/drroc4/drroc4/drrocapp/mongo#password>"
 slsmongoPasswordPath: "<path:mas/drroc4/drroc4/drrocapp/sls-mongo#password>"
-# Pinned Mongo CA (base64 PEM), generated once and stored in AWS Secrets Manager.
-# The platform Application overrides these example paths for each environment.
-mongoCaCert: "<path:mas/drroc4/drroc4/drrocapp/mongo-ca#tls_crt_b64>"
-mongoCaKey: "<path:mas/drroc4/drroc4/drrocapp/mongo-ca#tls_key_b64>"
+# The Mongo CA is generated and rotated by cert-manager in-cluster (00-ca.yaml). Its public
+# certificate is published to AWS Secrets Manager by 30-publish-ca so MAS/SLS can trust it.
+# The platform Application overrides these example values for each environment.
+publishCa:
+  enabled: true
+  image: "quay.io/ibmmas/cli@sha256:887cc3059a04601241687711df0c03d662931e6719121eec0eb0490001b2c8b9"
+  credentialsSecret: aws-static-credentials-publisher
+  mongoSecretPath: "mas/drroc4/drroc4/drrocapp/mongo"

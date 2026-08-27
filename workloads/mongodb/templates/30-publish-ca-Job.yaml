@@ -1,0 +1,106 @@
+# Publishes the cert-manager-generated Mongo CA PUBLIC certificate to AWS Secrets Manager,
+# merged into the existing mongo secret's "ca.crt" field, so MAS/SLS can trust the connection.
+# Only the public certificate is written — the CA private key stays in the cluster.
+# Runs as a PostSync hook so it fires after cert-manager has populated the CA secret.
+{{- if .Values.publishCa.enabled }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: "{{ .Values.resource }}-ca-publisher"
+  namespace: "{{ .Values.namespace }}"
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: "{{ .Values.resource }}-ca-publisher"
+  namespace: "{{ .Values.namespace }}"
+rules:
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["{{ .Values.resource }}-ca"]
+    verbs: ["get"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: "{{ .Values.resource }}-ca-publisher"
+  namespace: "{{ .Values.namespace }}"
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: "{{ .Values.resource }}-ca-publisher"
+subjects:
+  - kind: ServiceAccount
+    name: "{{ .Values.resource }}-ca-publisher"
+    namespace: "{{ .Values.namespace }}"
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: "{{ .Values.resource }}-ca-publish"
+  namespace: "{{ .Values.namespace }}"
+  annotations:
+    argocd.argoproj.io/hook: PostSync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 20
+  template:
+    spec:
+      serviceAccountName: "{{ .Values.resource }}-ca-publisher"
+      restartPolicy: OnFailure
+      securityContext:
+        seccompProfile: { type: RuntimeDefault }
+      containers:
+        - name: publish
+          image: {{ .Values.publishCa.image | quote }}
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          env:
+            - name: AWS_REGION
+              valueFrom: { secretKeyRef: { name: {{ .Values.publishCa.credentialsSecret }}, key: region } }
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: {{ .Values.publishCa.credentialsSecret }}, key: aws_access_key_id } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.publishCa.credentialsSecret }}, key: aws_secret_access_key } }
+            - { name: AWS_EC2_METADATA_DISABLED, value: "true" }
+            - { name: CA_SECRET, value: "{{ .Values.resource }}-ca" }
+            - { name: NS,        value: "{{ .Values.namespace }}" }
+            - { name: SM_PATH,   value: "{{ .Values.publishCa.mongoSecretPath }}" }
+            - { name: HOME,      value: "/tmp" }
+          args:
+            - |
+              set -euo pipefail
+              # wait for cert-manager to populate the CA secret
+              for i in $(seq 1 60); do
+                CA_B64="$(oc get secret "$CA_SECRET" -n "$NS" -o jsonpath='{.data.ca\.crt}' 2>/dev/null || true)"
+                [ -n "$CA_B64" ] && break
+                echo "waiting for CA secret $CA_SECRET to be ready ($i/60)"; sleep 10
+              done
+              [ -n "${CA_B64:-}" ] || { echo "ERROR: CA secret $CA_SECRET not ready"; exit 1; }
+              CA_PEM="$(echo "$CA_B64" | base64 -d)"
+
+              # merge ca.crt into the existing mongo secret (preserve username/password/host);
+              # skip the write if it is already current, to avoid a new secret version each sync.
+              if aws secretsmanager describe-secret --secret-id "$SM_PATH" >/dev/null 2>&1; then
+                CUR="$(aws secretsmanager get-secret-value --secret-id "$SM_PATH" --query SecretString --output text 2>/dev/null || echo '{}')"
+                if [ "$(echo "$CUR" | jq -r '."ca.crt" // empty')" = "$CA_PEM" ]; then
+                  echo "Mongo CA already current in $SM_PATH#ca.crt — nothing to do"; exit 0
+                fi
+                echo "$CUR" | jq --arg ca "$CA_PEM" '. + {"ca.crt":$ca}' > /tmp/mongo.json
+                aws secretsmanager put-secret-value --secret-id "$SM_PATH" --secret-string file:///tmp/mongo.json
+              else
+                jq -n --arg ca "$CA_PEM" '{"ca.crt":$ca}' > /tmp/mongo.json
+                aws secretsmanager create-secret --name "$SM_PATH" --secret-string file:///tmp/mongo.json
+              fi
+              rm -f /tmp/mongo.json
+              echo "published Mongo CA public certificate to $SM_PATH#ca.crt"
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: { drop: ["ALL"] }
+          volumeMounts:
+            - { name: tmp, mountPath: /tmp }
+      volumes:
+        - { name: tmp, emptyDir: {} }
+{{- end }}

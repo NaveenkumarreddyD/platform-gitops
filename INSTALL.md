@@ -142,8 +142,7 @@ Secret names and fields:
 |---|---|
 | `mas/<account>/<cluster>/entitlement` | `image_pull_secret_b64` |
 | `mas/<account>/<cluster>/<instance>/license` | `license_file` |
-| `mas/<account>/<cluster>/<instance>/mongo-ca` | `tls_crt_b64`, `tls_key_b64` |
-| `mas/<account>/<cluster>/<instance>/mongo` | `username`, `password`, `host`, `ca.crt` |
+| `mas/<account>/<cluster>/<instance>/mongo` | `username`, `password`, `host` |
 | `mas/<account>/<cluster>/<instance>/sls-mongo` | `username`, `password`, `ca.crt` |
 | `mas/<account>/<cluster>/<instance>/jdbc-system` | `username`, `password`, `jdbc_url` |
 | `mas/<account>/<cluster>/<instance>/certs/public` | `tls_crt_b64`, `tls_key_b64`, `ca_crt_b64` |
@@ -152,10 +151,24 @@ Secret names and fields:
 
 Encoding rules:
 
-- `license_file`, Mongo `ca.crt`, and SLS Mongo `ca.crt` contain their original text.
+- `license_file` and SLS Mongo `ca.crt` contain their original text.
 - `tls_crt_b64`, `tls_key_b64`, and `ca_crt_b64` contain one base64 encoding of the file.
 - `image_pull_secret_b64` is one base64 encoding of the complete Docker config JSON.
 - Each secret value is one JSON object; field names are case-sensitive.
+
+**MongoDB CA (automated — do not seed it).** The Mongo CA is generated and rotated by
+cert-manager inside the cluster; its private key never leaves the cluster. After the mongo
+instance syncs, a PostSync job publishes only the CA **public** certificate into the mongo
+secret's `ca.crt` field, which MAS and SLS then trust. So the `mongo` secret above is seeded
+with `username`/`password`/`host` only — `ca.crt` is added automatically. For that job to
+write to Secrets Manager, create the publisher key in the **mongo namespace** as well:
+
+```bash
+oc create secret generic aws-static-credentials-publisher -n mongo-gitops \
+  --from-literal=region=us-east-1 \
+  --from-literal=aws_access_key_id=AKIAYYYYYYYYYYYYYYYY \
+  --from-literal=aws_secret_access_key=yyyyyyyy
+```
 
 Create or update a secret without putting its value on the command line:
 

@@ -1,31 +1,66 @@
-# The Mongo CA is generated once, stored in AWS Secrets Manager, and rendered here.
-# cert-manager signs the server certificate with the same CA trusted by MAS and SLS.
-apiVersion: v1
-kind: Secret
-type: kubernetes.io/tls
+# The Mongo CA is generated and owned by cert-manager IN-CLUSTER. The CA private key never
+# leaves the cluster (it is not stored in AWS Secrets Manager). cert-manager signs the mongo
+# server certificate with this CA and AUTO-ROTATES it before expiry. Only the CA *public*
+# certificate is published to AWS Secrets Manager (see 30-publish-ca) so MAS and SLS — which
+# inline the CA in their MongoCfg — can trust the connection.
+---
+# 1) Bootstrap self-signed issuer (used only to mint the CA below).
+apiVersion: cert-manager.io/v1
+kind: Issuer
+metadata:
+  name: "{{ .Values.resource }}-selfsigned"
+  namespace: "{{ .Values.namespace }}"
+spec:
+  selfSigned: {}
+---
+# 2) The Mongo CA — cert-manager generates cert+key into the "<resource>-ca" Secret.
+apiVersion: cert-manager.io/v1
+kind: Certificate
 metadata:
   name: "{{ .Values.resource }}-ca"
   namespace: "{{ .Values.namespace }}"
   annotations:
-    # Argo CD must not delete the signing CA during a non-pruning installation.
+    # Argo CD must not prune the signing CA during a non-pruning install.
     argocd.argoproj.io/sync-options: Prune=false
-data:
-  tls.crt: {{ .Values.mongoCaCert }}
-  tls.key: {{ .Values.mongoCaKey }}
-  ca.crt:  {{ .Values.mongoCaCert }}
+spec:
+  isCA: true
+  commonName: "{{ .Values.resource }}-ca"
+  secretName: "{{ .Values.resource }}-ca"
+  duration: 87600h       # 10 years
+  renewBefore: 2160h     # 90 days
+  privateKey:
+    algorithm: RSA
+    size: 4096
+  issuerRef:
+    name: "{{ .Values.resource }}-selfsigned"
+    kind: Issuer
 ---
+# 3) CA issuer — signs the server certificate below.
 apiVersion: cert-manager.io/v1
 kind: Issuer
-metadata: { name: "{{ .Values.resource }}-ca-issuer", namespace: "{{ .Values.namespace }}" }
-spec: { ca: { secretName: "{{ .Values.resource }}-ca" } }
+metadata:
+  name: "{{ .Values.resource }}-ca-issuer"
+  namespace: "{{ .Values.namespace }}"
+spec:
+  ca:
+    secretName: "{{ .Values.resource }}-ca"
 ---
+# 4) Mongo server certificate — cert-manager issues AND auto-rotates it under the CA.
 apiVersion: cert-manager.io/v1
 kind: Certificate
-metadata: { name: "{{ .Values.resource }}-server", namespace: "{{ .Values.namespace }}" }
+metadata:
+  name: "{{ .Values.resource }}-server"
+  namespace: "{{ .Values.namespace }}"
 spec:
   secretName: "{{ .Values.resource }}-server-cert"
-  duration: 8760h
-  issuerRef: { name: "{{ .Values.resource }}-ca-issuer", kind: Issuer }
+  duration: 8760h        # 1 year
+  renewBefore: 720h      # 30 days — cert-manager renews automatically, no manual step
+  privateKey:
+    algorithm: RSA
+    size: 2048
+  issuerRef:
+    name: "{{ .Values.resource }}-ca-issuer"
+    kind: Issuer
   dnsNames:
     - "{{ .Values.resource }}-svc.{{ .Values.namespace }}.svc.cluster.local"
     - "*.{{ .Values.resource }}-svc.{{ .Values.namespace }}.svc.cluster.local"
