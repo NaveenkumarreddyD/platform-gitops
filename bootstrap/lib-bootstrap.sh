@@ -78,6 +78,15 @@ verify_avp_repo_server(){
   [[ "$type" == "awssecretsmanager" && -n "$region" ]] || die "AWS Secrets Manager CMP is unavailable - run ./bootstrap/00-prereqs.sh $ENV"
 }
 
+mongo_ca_published(){
+  # True once the cert-manager Mongo CA public cert has been published to mongo#ca.crt
+  # (by the mongodb app's PostSync job) and AVP can resolve it. MAS MongoCfg and SLS both
+  # read this field, so this gates the handoff from 20-mongodb.sh to 30-mas.sh.
+  local ipath; ipath="$(aws_instance_path)"
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: mongo-ca-check\nstringData:\n  ca: <path:%s/mongo#ca.crt>\n' "$ipath" \
+    | oc exec -i -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- argocd-vault-plugin generate - >/dev/null 2>&1
+}
+
 verify_aws_secrets(){
   local set_name="${1:?verify_aws_secrets requires mongo, mas, or generated}"
   local ipath cpath manifest
