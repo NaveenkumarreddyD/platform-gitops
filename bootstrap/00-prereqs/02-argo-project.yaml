@@ -9,7 +9,7 @@ spec:
   sourceRepos:
     - https://gitlab.lac1.biz/gitops/platform-gitops.git
     - https://gitlab.lac1.biz/gitops/mas-gitops-config.git
-    - https://github.com/ibm-mas/gitops.git
+    - https://gitlab.lac1.biz/gitops/ibm-gitops.git
     - https://mongodb.github.io/helm-charts       # MongoDB Controllers for Kubernetes Operator chart
   # DESTINATIONS — in-cluster ONLY. This server lock is the guardrail that matters for this topology:
   # each ArgoCD manages exactly one cluster, so this prevents any cross-cluster deploy. Namespace is

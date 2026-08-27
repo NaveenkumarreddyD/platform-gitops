@@ -2,5 +2,5 @@ clusterId: roc4
 account: { id: roc4 }        # per-env account → ArgoCD globs only roc4/* in the config repo
 storageClass: isilon
 platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: "main" }
-source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.4.2" }
+source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-gitops.git", revision: "official-8.4.2" }
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: "main" }

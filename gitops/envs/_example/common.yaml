@@ -5,7 +5,7 @@ account: { id: CHANGE_ME }      # MUST be unique per env (usually = clusterId). 
 storageClass: isilon
 # IBM source is the unmodified official release tag.
 platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: "main" }
-source:    { repo_url: "https://github.com/ibm-mas/gitops.git", revision: "8.4.2" }
+source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-gitops.git", revision: "official-8.4.2" }
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: "main" }
 # Optional when DRO uses a non-default namespace.
 generatedSecretsPublisher: { droNamespace: ibm-software-central }

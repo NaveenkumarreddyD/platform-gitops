@@ -1,8 +1,10 @@
 # IBM MAS installation with AWS Secrets Manager
 
-This is the supported fresh-install procedure. The IBM source is the unmodified official
-`ibm-mas/gitops` release `8.4.2`, pinned so a later upstream release cannot change a
-running installation unexpectedly.
+This is the supported fresh-install procedure. The IBM source is the `ibm-mas/gitops`
+`8.4.2` release served from the internal fork `https://gitlab.lac1.biz/gitops/ibm-gitops.git`
+(revision `official-8.4.2`), pinned so a later upstream release cannot change a running
+installation unexpectedly. The fork is stock 8.4.2 except the JDBC config chart's
+`sslEnabled` is made configurable via `jdbc_ssl_enabled` (to support a non-SSL database).
 
 Examples use `drroc4`. Replace it with the required environment name.
 
@@ -97,7 +99,7 @@ Required repositories:
 |---|---|
 | Platform | your `platform-gitops` repository |
 | Configuration | your `mas-gitops-config` repository |
-| IBM MAS GitOps | `https://github.com/ibm-mas/gitops.git`, tag `8.4.2` |
+| IBM MAS GitOps (fork) | `https://gitlab.lac1.biz/gitops/ibm-gitops.git`, revision `official-8.4.2` |
 
 The IBM repository is read directly from GitHub. Do not apply local patches to it.
 
