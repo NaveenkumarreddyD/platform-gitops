@@ -10,35 +10,30 @@ Examples use `drroc4`. Replace it with the required environment name.
 
 ## 1. Architecture and access
 
-The on-premises workloads authenticate to AWS with an IAM access key whose secret half is
-held in One Identity Safeguard. An AWS `credential_process` calls Safeguard's
-Application-to-Application (A2A) API over mutual TLS, fetches the secret access key, and
-hands the AWS SDK short-cached static credentials:
+> **Security note.** This procedure stores a **long-lived AWS access key in the cluster**
+> (a Kubernetes Secret in `openshift-gitops`), which is exactly what production security
+> policy usually wants to avoid. It is the simple bootstrap approach. Keep each key
+> **least-privileged** and **rotate it** on a schedule, and for production move to a
+> keyless or brokered method (for example, an external secret broker) so no static AWS
+> secret lives in the cluster.
+
+The on-premises workloads authenticate to AWS Secrets Manager with a **static IAM access
+key** read from a Kubernetes Secret through plain environment variables
+(`AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_REGION`). No certificate, external
+broker, or X.509-to-STS exchange is involved:
 
 ```text
-repo-server A2A client cert -> Safeguard A2A (read registration)  -> read IAM key  -> manifest generation
-publisher  A2A client cert -> Safeguard A2A (write registration) -> write IAM key -> generated SLS/DRO secrets
+repo-server (avp-helm) reads aws-static-credentials           -> reads MAS secrets  -> manifest generation
+publisher reads aws-static-credentials-publisher              -> writes IAM secrets -> generated SLS/DRO secrets
 ```
-
-A long-lived AWS access key still exists, but it is stored and rotated inside One Identity
-Safeguard, never in the cluster. Do not store `AWS_SECRET_ACCESS_KEY` in an OpenShift
-Secret. There is no Roles Anywhere, trust anchor, profile, or X.509-to-STS exchange.
 
 Create these resources:
 
 1. An IAM user with an access key for Argo CD manifest generation (read).
 2. A separate IAM user with an access key for generated SLS/DRO registration (write).
    Separate users keep least privilege intact.
-3. For each IAM user, register its access key as a Safeguard **managed account** and
-   configure Safeguard to **auto-rotate** that key on a schedule. Safeguard-side rotation
-   is what keeps a long-lived key acceptable.
-4. A Safeguard **A2A registration** per workload: the managed account holding the AWS
-   secret access key, an A2A API key, and a client certificate the workload presents for
-   mutual TLS. Use a separate registration for the reader and the publisher.
-
-Store only the AWS access key **ID** in the cluster (a public identifier). The secret half
-is retrieved from Safeguard at run time and cached for `credentialTtlSeconds`; a short TTL
-makes the SDK re-fetch periodically so Safeguard-side key rotation is picked up.
+3. Rotate each key on a schedule with your approved AWS controls, and delete any key that
+   is exposed.
 
 The read policy needs `secretsmanager:GetSecretValue` and
 `secretsmanager:DescribeSecret` on:
@@ -65,29 +60,23 @@ the minimum encrypt/data-key permissions required by Secrets Manager to the publ
 Restrict both with `kms:ViaService=secretsmanager.<region>.amazonaws.com`.
 
 Allow HTTPS egress from the repo-server and publisher to the regional Secrets Manager
-endpoint and to the Safeguard A2A appliance URL.
+endpoint.
 
 For on-premises clusters, prefer **interface VPC endpoints (AWS PrivateLink)** over public
 egress so no AWS traffic leaves the AWS network. The AWS services support them:
-`com.amazonaws.<region>.sts` and `com.amazonaws.<region>.secretsmanager` (plus
-`com.amazonaws.<region>.kms` for a CMK). Reach them over Direct Connect or VPN, and resolve
-the service DNS to the private endpoint IPs from on-premises (Route 53 Resolver inbound
-endpoint). When using endpoints, gate access with `aws:SourceVpce` on the secret and KMS
-policies rather than `aws:SourceIp` — the source-IP condition is not evaluated for requests
-that arrive through a VPC endpoint.
+`com.amazonaws.<region>.secretsmanager` (plus `com.amazonaws.<region>.kms` for a CMK).
+Reach them over Direct Connect or VPN, and resolve the service DNS to the private endpoint
+IPs from on-premises (Route 53 Resolver inbound endpoint). When using endpoints, gate
+access with `aws:SourceVpce` on the secret and KMS policies rather than `aws:SourceIp` —
+the source-IP condition is not evaluated for requests that arrive through a VPC endpoint.
 
-The strongest posture is to let Safeguard broker the credential and rely on its rotation
-and audit trail. Because a real AWS access key exists, key rotation, least-privilege IAM,
-KMS encryption, private VPC endpoints, and CloudTrail all matter more, not less.
+Because a real long-lived AWS access key exists in the cluster, key rotation,
+least-privilege IAM, KMS encryption, private VPC endpoints, and CloudTrail all matter
+more, not less.
 
 Argo CD caches generated manifests after substitution. Restrict access to the repo-server,
 Redis, Argo CD API/UI, and application manifests to the same administrative boundary as
 the referenced secrets.
-
-References:
-
-- https://docs.aws.amazon.com/sdkref/latest/guide/feature-process-credentials.html
-- One Identity Safeguard Application-to-Application (A2A) service documentation.
 
 ## 2. Required tools and repositories
 
@@ -118,57 +107,30 @@ oc apply -f -
 
 ## 3. Configure the workload identity
 
-Create the non-secret reader settings. `accessKeyId` is the AWS access key ID (public);
-its secret half comes from Safeguard. `safeguardA2aUrl` is the full A2A retrieval URL, and
-`credentialTtlSeconds` is how long the SDK caches before re-fetching:
+Create two Secrets in namespace `openshift-gitops`, each holding the keys `region`,
+`aws_access_key_id`, and `aws_secret_access_key`. The workloads read them as the
+`AWS_REGION`, `AWS_ACCESS_KEY_ID`, and `AWS_SECRET_ACCESS_KEY` environment variables.
+
+- `aws-static-credentials` — the reader. AVP resolves `<path:>` placeholders at sync time
+  with this key, which is read-only.
+- `aws-static-credentials-publisher` — the publisher. It writes the generated SLS/DRO
+  registration with this separate write-scoped key.
 
 ```bash
-oc -n openshift-gitops create configmap aws-secrets-manager-auth \
-  --from-literal=region='<aws-region>' \
-  --from-literal=safeguardA2aUrl='https://safeguard.corp.example/service/a2a/v4/Credentials?type=Password' \
-  --from-literal=accessKeyId='<reader-access-key-id>' \
-  --from-literal=credentialTtlSeconds='900' \
-  --dry-run=client -o yaml | oc apply -f -
+oc create secret generic aws-static-credentials -n openshift-gitops \
+  --from-literal=region=us-east-1 \
+  --from-literal=aws_access_key_id=AKIAXXXXXXXXXXXXXXXX \
+  --from-literal=aws_secret_access_key=xxxxxxxx
+
+oc create secret generic aws-static-credentials-publisher -n openshift-gitops \
+  --from-literal=region=us-east-1 \
+  --from-literal=aws_access_key_id=AKIAYYYYYYYYYYYYYYYY \
+  --from-literal=aws_secret_access_key=yyyyyyyy
 ```
 
-Create the reader A2A identity Secret from the client certificate, its unencrypted key, and
-the A2A API key. Mount `ca.pem` only for a private or internal Safeguard appliance:
-
-```bash
-oc -n openshift-gitops create secret generic oneidentity-a2a-avp \
-  --from-file=client-cert.pem=/secure/path/reader-client.crt \
-  --from-file=client-key.pem=/secure/path/reader-client.key \
-  --from-file=api-key=/secure/path/reader-a2a-api-key \
-  --from-file=ca.pem=/secure/path/safeguard-ca.pem \
-  --dry-run=client -o yaml | oc apply -f -
-```
-
-The client certificate and private key are the mutual-TLS identity Safeguard trusts, not
-AWS access keys. Never commit the private key or the API key. Rotate the A2A identity in
-Safeguard and revoke it immediately if it is exposed.
-
-Create the publisher settings with the separate IAM access key ID and Safeguard
-registration:
-
-```bash
-oc -n openshift-gitops create configmap aws-secrets-manager-publisher-auth \
-  --from-literal=region='<aws-region>' \
-  --from-literal=safeguardA2aUrl='https://safeguard.corp.example/service/a2a/v4/Credentials?type=Password' \
-  --from-literal=accessKeyId='<publisher-access-key-id>' \
-  --from-literal=credentialTtlSeconds='900' \
-  --dry-run=client -o yaml | oc apply -f -
-
-oc -n openshift-gitops create secret generic oneidentity-a2a-publisher \
-  --from-file=client-cert.pem=/secure/path/publisher-client.crt \
-  --from-file=client-key.pem=/secure/path/publisher-client.key \
-  --from-file=api-key=/secure/path/publisher-a2a-api-key \
-  --from-file=ca.pem=/secure/path/safeguard-ca.pem \
-  --dry-run=client -o yaml | oc apply -f -
-```
-
-The reader and publisher must use separate Safeguard registrations and separate IAM users
-so least privilege is preserved. The secret access key is fetched from Safeguard only when
-the workload calls Secrets Manager, and is cached in memory for `credentialTtlSeconds`.
+The reader and publisher must use separate IAM users so least privilege is preserved.
+Never commit these keys. Rotate them on a schedule and delete either key immediately if it
+is exposed.
 
 ## 4. Create the static deployment secrets
 
@@ -254,8 +216,8 @@ The preflight must pass before anything is applied.
 
 What each step does:
 
-1. `00-prereqs` configures Argo CD, the AWS Secrets Manager plugin, and the One Identity
-   Safeguard A2A credential process.
+1. `00-prereqs` configures Argo CD and the AWS Secrets Manager plugin, wiring the
+   `aws-static-credentials` Secret into the repo-server as AWS environment variables.
 2. `05-operators` installs and verifies cert-manager and any explicitly enabled operator.
 3. `20-mongodb` validates its AWS secret fields, then installs the compatible MongoDB
    operator and database.
@@ -270,8 +232,8 @@ IBM `8.4.2` post-sync write-back Jobs accept only static AWS access keys and pub
 different field contract, so those two Jobs remain disabled. The platform's
 `aws-generated-secrets-publisher` Deployment replaces that function automatically.
 
-Every five minutes it checks the generated OpenShift resources, obtains AWS credentials
-through the publisher's One Identity Safeguard A2A registration, and creates or updates:
+Every five minutes it checks the generated OpenShift resources, authenticates to AWS with
+the static key in `aws-static-credentials-publisher`, and creates or updates:
 
 ```text
 mas/<account>/<cluster>/dro

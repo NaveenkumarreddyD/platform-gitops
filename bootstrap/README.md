@@ -14,11 +14,13 @@ reconciler; the scripts do not implement a second deployment engine.
 
 Before `00-prereqs`, create:
 
-- `openshift-gitops/aws-secrets-manager-auth` ConfigMap
-- `openshift-gitops/oneidentity-a2a-avp` Secret
-- `openshift-gitops/aws-secrets-manager-publisher-auth` ConfigMap
-- `openshift-gitops/oneidentity-a2a-publisher` Secret
+- `openshift-gitops/aws-static-credentials` Secret (reader static AWS access key)
+- `openshift-gitops/aws-static-credentials-publisher` Secret (publisher static AWS access key)
 - `openshift-gitops/gitlab-gitops-group-repo-creds` Secret
+
+Each `aws-static-credentials*` Secret holds `region`, `aws_access_key_id`, and
+`aws_secret_access_key`; no ConfigMaps are needed. The plugin binary is still named
+`argocd-vault-plugin` with `AVP_TYPE=awssecretsmanager` — unchanged and intentional.
 
 The complete procedure and direct-command alternative are in
 `../INSTALL.md` and `../MANUAL-INSTALL.md`.

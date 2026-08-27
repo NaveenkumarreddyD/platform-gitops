@@ -25,9 +25,9 @@ aws_region="$(oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server \
   -c avp-helm -- printenv AWS_REGION 2>/dev/null | tr -d '\r' || true)"
 printf "  backend=%s region=%s\n" "${aws_type:-unavailable}" "${aws_region:-unset}"
 if verify_avp_repo_server >/dev/null 2>&1; then
-  echo "  One Identity A2A credentials: available"
+  echo "  AWS Secrets Manager CMP: configured"
 else
-  echo "  One Identity A2A credentials: FAILED"
+  echo "  AWS Secrets Manager CMP: FAILED"
 fi
 if verify_aws_secrets generated >/dev/null 2>&1; then
   echo "  SLS/DRO registration: present"

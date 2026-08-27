@@ -14,15 +14,12 @@ lbl="$(oc get secret gitlab-gitops-group-repo-creds -n "$ARGO_NS" -o jsonpath='{
 [[ "$lbl" == "repo-creds" ]] || die "repo credential secret is not labeled as an Argo CD repo-creds secret"
 
 validate_aws_identity_inputs
-validate_oneidentity_certificate_secret "$AWS_IDENTITY_SECRET"
-validate_oneidentity_certificate_secret "$AWS_PUBLISHER_IDENTITY_SECRET"
 
-say "1/3 apply Argo CD prerequisites and AWS credential process"
+say "1/3 apply Argo CD prerequisites"
 oc apply -f "$ROOT/bootstrap/00-prereqs/00-gitlab-ca-configmap.yaml"
 oc apply -f "$ROOT/bootstrap/00-prereqs/01-argocd-cluster-admin-rbac.yaml"
 oc apply -f "$ROOT/bootstrap/00-prereqs/02-argo-project.yaml"
 oc apply -f "$ROOT/bootstrap/00-prereqs/03-avp-cmp-plugin.yaml"
-oc apply -f "$ROOT/bootstrap/00-prereqs/04-oneidentity-credential-process.yaml"
 
 say "2/3 patch the ArgoCD CR and roll the repo-server"
 oc patch argocd "$ARGO_NS" -n "$ARGO_NS" --type merge --patch-file "$ROOT/bootstrap/argocd-cr-healthchecks-patch.yaml"
@@ -36,6 +33,6 @@ done
 oc rollout restart deploy/openshift-gitops-repo-server -n "$ARGO_NS"
 oc rollout status deploy/openshift-gitops-repo-server -n "$ARGO_NS" --timeout=10m
 verify_avp_repo_server
-say "verified AWS Secrets Manager read access with One Identity Safeguard A2A credentials"
+say "verified AWS Secrets Manager CMP is configured (static-key credentials)"
 
 say "3/3 done. NEXT: ./bootstrap/05-operators.sh $ENV"

@@ -12,12 +12,14 @@ upstream except that the JDBC config chart's `sslEnabled` is made configurable
 - `mas-gitops-config`: environment-specific IBM chart values and secret references.
 - IBM's repository: consumed directly from the official GitHub URL at the pinned tag.
 - AWS Secrets Manager: stores deployment secrets under `mas/<account>/<cluster>/...`.
-- One Identity Safeguard A2A: an AWS `credential_process` fetches the AWS secret access key
-  from Safeguard's Application-to-Application API over mutual TLS, so the Argo CD repo-server
-  and publisher get AWS credentials without any AWS secret stored in an OpenShift Secret.
-  The long-lived AWS access key lives and rotates inside Safeguard.
+- AWS authentication: the Argo CD repo-server and publisher authenticate with a **static
+  AWS access key** read from a Kubernetes Secret (`aws-static-credentials`) via plain
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` environment variables. This is
+  the simple bootstrap approach; it keeps a long-lived key in the cluster, so the keys must
+  be least-privileged and rotated. See [INSTALL.md](INSTALL.md) for the security note.
 - Generated-secret publisher: automatically copies SLS and DRO registration into AWS
-  Secrets Manager with a separate, write-only Safeguard A2A identity and IAM user.
+  Secrets Manager with a separate, write-scoped static key (`aws-static-credentials-publisher`)
+  and IAM user.
 
 The `argocd-vault-plugin` executable remains because that is the upstream plugin name used
 by IBM's charts. Its configured backend is `awssecretsmanager` (`AVP_TYPE=awssecretsmanager`);

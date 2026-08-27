@@ -5,10 +5,8 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARGO_NS="${ARGO_NS:-openshift-gitops}"
-AWS_AUTH_CONFIGMAP="${AWS_AUTH_CONFIGMAP:-aws-secrets-manager-auth}"
-AWS_IDENTITY_SECRET="${AWS_IDENTITY_SECRET:-oneidentity-a2a-avp}"
-AWS_PUBLISHER_AUTH_CONFIGMAP="${AWS_PUBLISHER_AUTH_CONFIGMAP:-aws-secrets-manager-publisher-auth}"
-AWS_PUBLISHER_IDENTITY_SECRET="${AWS_PUBLISHER_IDENTITY_SECRET:-oneidentity-a2a-publisher}"
+AWS_IDENTITY_SECRET="${AWS_IDENTITY_SECRET:-aws-static-credentials}"
+AWS_PUBLISHER_IDENTITY_SECRET="${AWS_PUBLISHER_IDENTITY_SECRET:-aws-static-credentials-publisher}"
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
 say(){ echo ">> $*"; }
@@ -59,35 +57,18 @@ apply_component(){
   render_component "$component" "$@" | oc apply -f -
 }
 
-validate_oneidentity_identity_inputs(){
-  local configmap_name="${1:?configmap name required}"
-  local secret_name="${2:?secret name required}"
-  local purpose="${3:?identity purpose required}"
-  local key value
-  oc get configmap "$configmap_name" -n "$ARGO_NS" >/dev/null 2>&1 || die "ConfigMap $ARGO_NS/$configmap_name is missing for $purpose (see INSTALL.md)"
-  for key in region safeguardA2aUrl accessKeyId credentialTtlSeconds; do
-    value="$(oc get configmap "$configmap_name" -n "$ARGO_NS" -o "jsonpath={.data.$key}" 2>/dev/null || true)"
-    [[ -n "$value" && "$value" != *REPLACE_ME* ]] || die "ConfigMap $ARGO_NS/$configmap_name is missing a real '$key' value"
-  done
+validate_static_credentials(){
+  local secret_name="${1:?secret name required}" purpose="${2:?identity purpose required}" key value
   oc get secret "$secret_name" -n "$ARGO_NS" >/dev/null 2>&1 || die "Secret $ARGO_NS/$secret_name is missing for $purpose (see INSTALL.md)"
-  for key in client-cert.pem client-key.pem api-key; do
+  for key in region aws_access_key_id aws_secret_access_key; do
     value="$(oc get secret "$secret_name" -n "$ARGO_NS" -o "jsonpath={.data.$key}" 2>/dev/null || true)"
     [[ -n "$value" ]] || die "Secret $ARGO_NS/$secret_name is missing '$key'"
   done
 }
 
 validate_aws_identity_inputs(){
-  validate_oneidentity_identity_inputs "$AWS_AUTH_CONFIGMAP" "$AWS_IDENTITY_SECRET" "read-only manifest generation"
-  validate_oneidentity_identity_inputs "$AWS_PUBLISHER_AUTH_CONFIGMAP" "$AWS_PUBLISHER_IDENTITY_SECRET" "generated SLS/DRO publishing"
-}
-
-validate_oneidentity_certificate_secret(){
-  local secret_name="${1:?secret name required}" cert_pub key_pub
-  oc get secret "$secret_name" -n "$ARGO_NS" -o go-template='{{index .data "client-cert.pem"}}' | base64 -d | openssl x509 -noout -checkend 86400 >/dev/null || die "One Identity A2A client certificate in $ARGO_NS/$secret_name is invalid or expires within 24 hours"
-  oc get secret "$secret_name" -n "$ARGO_NS" -o go-template='{{index .data "client-key.pem"}}' | base64 -d | openssl pkey -noout >/dev/null 2>&1 || die "One Identity A2A private key in $ARGO_NS/$secret_name is invalid or encrypted"
-  cert_pub="$(oc get secret "$secret_name" -n "$ARGO_NS" -o go-template='{{index .data "client-cert.pem"}}' | base64 -d | openssl x509 -pubkey -noout | openssl pkey -pubin -outform DER 2>/dev/null | openssl sha256)"
-  key_pub="$(oc get secret "$secret_name" -n "$ARGO_NS" -o go-template='{{index .data "client-key.pem"}}' | base64 -d | openssl pkey -pubout -outform DER 2>/dev/null | openssl sha256)"
-  [[ "$cert_pub" == "$key_pub" ]] || die "One Identity A2A client certificate and private key in $ARGO_NS/$secret_name do not match"
+  validate_static_credentials "$AWS_IDENTITY_SECRET" "read-only manifest generation"
+  validate_static_credentials "$AWS_PUBLISHER_IDENTITY_SECRET" "generated SLS/DRO publishing"
 }
 
 verify_avp_repo_server(){
@@ -95,7 +76,6 @@ verify_avp_repo_server(){
   type="$(oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- printenv AVP_TYPE 2>/dev/null | tr -d '\r' || true)"
   region="$(oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- printenv AWS_REGION 2>/dev/null | tr -d '\r' || true)"
   [[ "$type" == "awssecretsmanager" && -n "$region" ]] || die "AWS Secrets Manager CMP is unavailable - run ./bootstrap/00-prereqs.sh $ENV"
-  oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- /usr/local/bin/oneidentity-credential-process >/dev/null || die "One Identity Safeguard A2A could not retrieve AWS credentials"
 }
 
 verify_aws_secrets(){

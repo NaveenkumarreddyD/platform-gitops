@@ -34,18 +34,13 @@ spec:
             - { name: DRO_NAMESPACE, value: {{ .Values.droNamespace | quote }} }
             - { name: SLS_NAMESPACE, value: {{ .Values.slsNamespace | quote }} }
             - { name: POLL_SECONDS, value: {{ .Values.pollSeconds | quote }} }
+            # Static AWS access key read from the publisher credentials Secret.
             - name: AWS_REGION
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: region } }
-            # One Identity Safeguard A2A inputs consumed by the credential_process.
-            - name: SAFEGUARD_A2A_URL
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: safeguardA2aUrl } }
+              valueFrom: { secretKeyRef: { name: {{ .Values.identitySecret }}, key: region } }
             - name: AWS_ACCESS_KEY_ID
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: accessKeyId } }
-            - name: CREDENTIAL_TTL_SECONDS
-              valueFrom: { configMapKeyRef: { name: {{ .Values.authConfigMap }}, key: credentialTtlSeconds } }
-            - { name: AWS_CONFIG_FILE, value: /etc/aws/config }
-            - { name: AWS_PROFILE, value: default }
-            - { name: AWS_SDK_LOAD_CONFIG, value: "1" }
+              valueFrom: { secretKeyRef: { name: {{ .Values.identitySecret }}, key: aws_access_key_id } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: {{ .Values.identitySecret }}, key: aws_secret_access_key } }
             - { name: AWS_EC2_METADATA_DISABLED, value: "true" }
             - { name: HOME, value: /tmp/home }
           resources:
@@ -64,17 +59,10 @@ spec:
             capabilities: { drop: ["ALL"] }
           volumeMounts:
             - { name: publisher-script, mountPath: /opt/publisher/publish.sh, subPath: publish.sh, readOnly: true }
-            - { name: credential-process, mountPath: /usr/local/bin/oneidentity-credential-process, subPath: credential-process.sh, readOnly: true }
-            - { name: credential-process, mountPath: /etc/aws/config, subPath: config, readOnly: true }
-            - { name: oneidentity-identity, mountPath: /var/run/secrets/oneidentity, readOnly: true }
             - { name: tmp, mountPath: /tmp }
       securityContext:
         seccompProfile: { type: RuntimeDefault }
       volumes:
         - name: publisher-script
           configMap: { name: aws-generated-secrets-publisher, defaultMode: 365 }
-        - name: credential-process
-          configMap: { name: oneidentity-credential-process, defaultMode: 365 }
-        - name: oneidentity-identity
-          secret: { secretName: {{ .Values.identitySecret }}, defaultMode: 288 }
         - { name: tmp, emptyDir: {} }

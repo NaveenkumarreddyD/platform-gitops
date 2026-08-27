@@ -2,6 +2,12 @@
 
 Use this after [INSTALL.md](INSTALL.md).
 
+> **Security note.** AWS authentication uses a **long-lived static access key stored in the
+> cluster** — the `aws-static-credentials` and `aws-static-credentials-publisher` Secrets in
+> `openshift-gitops`. This is the simple bootstrap approach and is what production security
+> policy usually wants to avoid. Keep each key least-privileged and rotate it on a schedule;
+> for production, plan a move to a keyless or brokered method.
+
 ## Quick status
 
 ```bash
@@ -18,8 +24,7 @@ oc get manageapps,manageworkspaces -A
 ## AWS secret substitution fails
 
 ```bash
-oc get configmap aws-secrets-manager-auth -n openshift-gitops -o yaml
-oc describe secret oneidentity-a2a-avp -n openshift-gitops
+oc describe secret aws-static-credentials -n openshift-gitops
 oc get deployment openshift-gitops-repo-server -n openshift-gitops
 oc logs deployment/openshift-gitops-repo-server -n openshift-gitops \
   -c avp-helm --tail=200
@@ -27,28 +32,28 @@ oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
   -c avp-helm -- printenv AVP_TYPE AWS_REGION AWS_ACCESS_KEY_ID
 ```
 
-Validate that AWS credentials are retrieved from One Identity Safeguard A2A, without
-displaying the credentials:
+Confirm the plugin is AWS and can resolve a real secret, without displaying any value.
+The sidecar image has no `aws` CLI, so verify through AVP rather than `aws sts`:
 
 ```bash
 oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
-  -c avp-helm -- /usr/local/bin/oneidentity-credential-process >/dev/null &&
-echo "AWS credentials from Safeguard A2A are working"
+  -c avp-helm -- printenv AVP_TYPE AWS_REGION
+printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: t\nstringData:\n  u: <path:mas/<account>/<cluster>/<instance>/jdbc-system#username>\n' \
+  | oc exec -i -n openshift-gitops deployment/openshift-gitops-repo-server \
+  -c avp-helm -- argocd-vault-plugin generate -
 ```
 
 Check the following:
 
-- The A2A client certificate is valid and is the one the Safeguard registration trusts.
-- The A2A API key in the identity Secret matches the Safeguard registration.
-- `safeguardA2aUrl` is reachable and, for a private appliance, `ca.pem` trusts its TLS cert.
-- The IAM access key (whose secret Safeguard returns) can read the exact
-  `mas/<account>/<cluster>/...` secret ARN.
+- The `aws-static-credentials` Secret exists and its `region`, `aws_access_key_id`, and
+  `aws_secret_access_key` values are correct and not expired or deactivated.
+- The IAM access key can read the exact `mas/<account>/<cluster>/...` secret ARN.
 - Customer-managed KMS keys allow this IAM user to decrypt through Secrets Manager.
-- Egress to the Safeguard A2A URL and to Secrets Manager is allowed.
+- Egress to Secrets Manager is allowed.
 - The secret exists and the JSON field has the exact case used by the placeholder.
 
-After correcting AWS or secret data, restart the repo-server when its mounted certificate
-or configuration changed:
+After correcting AWS or credential data, restart the repo-server when its mounted
+Secret or configuration changed:
 
 ```bash
 oc rollout restart deployment/openshift-gitops-repo-server -n openshift-gitops
@@ -63,32 +68,26 @@ oc annotate application <application> -n openshift-gitops \
   argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-## Rotate the A2A client certificate
+## Rotate the AWS access key
 
-Issue the new A2A client certificate and register it with the Safeguard A2A registration.
-Confirm its private key matches before updating the OpenShift Secret:
-
-```bash
-openssl x509 -in new-client.crt -pubkey -noout | openssl sha256
-openssl pkey -in new-client.key -pubout | openssl sha256
-```
-
-The hashes must match. Update and roll (mount `ca.pem` only for a private appliance):
+Rotate the reader key on a schedule. Create a new access key for the reader IAM user,
+update the Secret, roll the repo-server, confirm substitution works, then delete the old
+key in AWS:
 
 ```bash
-oc -n openshift-gitops create secret generic oneidentity-a2a-avp \
-  --from-file=client-cert.pem=new-client.crt \
-  --from-file=client-key.pem=new-client.key \
-  --from-file=api-key=reader-a2a-api-key \
-  --from-file=ca.pem=safeguard-ca.pem \
+oc create secret generic aws-static-credentials -n openshift-gitops \
+  --from-literal=region=us-east-1 \
+  --from-literal=aws_access_key_id=AKIANEWKEYIDXXXXXXXX \
+  --from-literal=aws_secret_access_key=newsecret \
   --dry-run=client -o yaml | oc apply -f -
 oc rollout restart deployment/openshift-gitops-repo-server -n openshift-gitops
 oc rollout status deployment/openshift-gitops-repo-server \
   -n openshift-gitops --timeout=10m
 ```
 
-Run the credential check above, then retire the old client certificate in Safeguard. The
-AWS access key itself is rotated by Safeguard on its schedule, not here.
+Run the substitution check above, then delete the superseded access key in AWS. Rotate the
+publisher key the same way against `aws-static-credentials-publisher`, restarting
+`deployment/aws-generated-secrets-publisher` instead of the repo-server.
 
 ## DRO or SLS registration is missing
 
@@ -99,8 +98,7 @@ AWS keys. The platform publisher replaces those hooks automatically. Check it fi
 oc get application aws-generated-secrets-publisher-<cluster> -n openshift-gitops
 oc get deployment,pod -n openshift-gitops -l app.kubernetes.io/name=aws-generated-secrets-publisher
 oc logs deployment/aws-generated-secrets-publisher -n openshift-gitops --tail=200
-oc get configmap aws-secrets-manager-publisher-auth -n openshift-gitops -o yaml
-oc describe secret oneidentity-a2a-publisher -n openshift-gitops
+oc describe secret aws-static-credentials-publisher -n openshift-gitops
 ```
 
 Confirm the generated source resources exist without printing their values:
@@ -111,8 +109,8 @@ oc get secret ibm-data-reporter-operator-api-token -n ibm-software-central
 oc get configmap sls-suite-registration -n mas-<instance>-sls
 ```
 
-The publisher retries every five minutes. After fixing its identity, IAM, KMS, egress, or
-source-resource issue, restart it to retry immediately:
+The publisher retries every five minutes. After fixing its credentials, IAM, KMS, egress,
+or source-resource issue, restart it to retry immediately:
 
 ```bash
 oc rollout restart deployment/aws-generated-secrets-publisher -n openshift-gitops
