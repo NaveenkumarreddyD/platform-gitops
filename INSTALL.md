@@ -2,7 +2,7 @@
 
 This is the supported fresh-install procedure. The IBM source is the `ibm-mas/gitops`
 `8.5.0` release served from the internal fork `https://gitlab.lac1.biz/gitops/ibm-gitops.git`
-(revision `official-8.5.0`), pinned so a later upstream release cannot change a running
+(revision `8.5.0-jdbc-patch`), pinned so a later upstream release cannot change a running
 installation unexpectedly. The fork is stock 8.5.0 except the JDBC config chart's
 `sslEnabled` is made configurable via `jdbc_ssl_enabled` (to support a non-SSL database).
 
@@ -85,9 +85,9 @@ Required repositories:
 |---|---|
 | Platform | your `platform-gitops` repository |
 | Configuration | your `mas-gitops-config` repository |
-| IBM MAS GitOps (fork) | `https://gitlab.lac1.biz/gitops/ibm-gitops.git`, revision `official-8.5.0` |
+| IBM MAS GitOps (fork) | `https://gitlab.lac1.biz/gitops/ibm-gitops.git`, revision `8.5.0-jdbc-patch` |
 
-The IBM fork is read from GitLab at the pinned revision `official-8.5.0`. It is stock
+The IBM fork is read from GitLab at the pinned revision `8.5.0-jdbc-patch`. It is stock
 upstream 8.5.0 plus the single reviewed JDBC `sslEnabled` change; do not add further local
 patches to it.
 

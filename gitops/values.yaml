@@ -8,7 +8,7 @@ project: mas
 argoNamespace: openshift-gitops
 
 platform:  { repo_url: "https://gitlab.lac1.biz/gitops/platform-gitops.git", revision: main }
-source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-gitops.git", revision: "official-8.5.0" }
+source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-gitops.git", revision: "8.5.0-jdbc-patch" }
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: main }
 
 # No default account — each env MUST set its own UNIQUE account.id in

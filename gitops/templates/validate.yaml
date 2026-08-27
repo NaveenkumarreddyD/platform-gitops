@@ -30,6 +30,6 @@ name, an unsupported IBM source, etc.). Rendered on every component render.
 {{- fail (printf "source.repo_url is '%s'; use the internal IBM MAS GitOps fork https://gitlab.lac1.biz/gitops/ibm-gitops.git" $repo) -}}
 {{- end -}}
 {{- $rev := (.Values.source).revision | toString -}}
-{{- if ne $rev "official-8.5.0" -}}
-{{- fail (printf "source.revision is '%s'; this repository is verified against the internal IBM MAS GitOps fork revision official-8.5.0 (stock 8.5.0 plus the JDBC sslEnabled patch)" $rev) -}}
+{{- if ne $rev "8.5.0-jdbc-patch" -}}
+{{- fail (printf "source.revision is '%s'; this repository is verified against the internal IBM MAS GitOps fork revision 8.5.0-jdbc-patch (stock 8.5.0 plus the JDBC sslEnabled patch)" $rev) -}}
 {{- end -}}
