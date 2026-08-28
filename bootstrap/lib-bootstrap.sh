@@ -72,10 +72,21 @@ validate_aws_identity_inputs(){
 }
 
 verify_avp_repo_server(){
-  local type region
-  type="$(oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- printenv AVP_TYPE 2>/dev/null | tr -d '\r' || true)"
-  region="$(oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- printenv AWS_REGION 2>/dev/null | tr -d '\r' || true)"
-  [[ "$type" == "awssecretsmanager" && -n "$region" ]] || die "AWS Secrets Manager CMP is unavailable - run ./bootstrap/00-prereqs.sh $ENV"
+  # Right after a repo-server rollout the old pod is still terminating, and
+  # `oc exec deployment/...` can land on it and return nothing. Target a Running,
+  # non-terminating pod and retry until the avp-helm sidecar reports the CMP.
+  local type region pod i
+  for i in $(seq 1 30); do
+    pod="$(oc get pods -n "$ARGO_NS" -l app.kubernetes.io/name=openshift-gitops-repo-server \
+      -o go-template='{{range .items}}{{if and (not .metadata.deletionTimestamp) (eq .status.phase "Running")}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' 2>/dev/null | head -1)"
+    if [[ -n "$pod" ]]; then
+      type="$(oc exec -n "$ARGO_NS" "$pod" -c avp-helm -- printenv AVP_TYPE 2>/dev/null | tr -d '\r' || true)"
+      region="$(oc exec -n "$ARGO_NS" "$pod" -c avp-helm -- printenv AWS_REGION 2>/dev/null | tr -d '\r' || true)"
+      [[ "$type" == "awssecretsmanager" && -n "$region" ]] && return 0
+    fi
+    sleep 5
+  done
+  die "AWS Secrets Manager CMP is unavailable after retries - inspect: oc exec -n $ARGO_NS deploy/openshift-gitops-repo-server -c avp-helm -- printenv AVP_TYPE AWS_REGION"
 }
 
 mongo_ca_published(){
