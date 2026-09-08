@@ -19,6 +19,10 @@ set -euo pipefail
 : "${TLS_CRT:?export TLS_CRT=/path/to/tls.crt}"
 : "${TLS_KEY:?export TLS_KEY=/path/to/tls.key}"
 : "${CA_CHAIN:?export CA_CHAIN=/path/to/ca-chain.crt}"
+# Publisher (write-scoped) static key — required: IBM's native SLS/DRO postsync-update-sm
+# jobs read it (sm_aws_*) to write the generated secrets to AWS Secrets Manager.
+: "${PUBLISHER_AWS_ACCESS_KEY_ID:?export PUBLISHER_AWS_ACCESS_KEY_ID=AKIA<publisher>}"
+: "${PUBLISHER_AWS_SECRET_ACCESS_KEY:?export PUBLISHER_AWS_SECRET_ACCESS_KEY=<secret>}"
 
 # ── OPTIONAL exports (with defaults) ─────────────────────────────
 MONGO_USERNAME="${MONGO_USERNAME:-admin}"
@@ -64,14 +68,11 @@ if [ -n "${POWERSCALE_S3_SUBCA:-}" ] && [ -n "${POWERSCALE_S3_ROOTCA:-}" ]; then
   put "$IP/manage-cos" "$(jq -n --arg s "$POWERSCALE_S3_SUBCA" --arg r "$POWERSCALE_S3_ROOTCA" '{powerscale_s3_subca:$s,powerscale_s3_rootca:$r}')"
 fi
 
-# publisher static key — cluster-level. Only needed if you use IBM's native postsync-update-sm
-# jobs (run_sync_hooks: true) to publish SLS/DRO, instead of the platform publisher Deployment.
-# IBM's DRO/SLS charts read sm_aws_access_key_id/secret and mount them into the update-sm jobs;
-# point sm.aws_access_key_id at <path:$P/publisher#aws_access_key_id>.
-if [ -n "${PUBLISHER_AWS_ACCESS_KEY_ID:-}" ] && [ -n "${PUBLISHER_AWS_SECRET_ACCESS_KEY:-}" ]; then
-  put "$P/publisher" "$(jq -n --arg r "$REGION" --arg k "$PUBLISHER_AWS_ACCESS_KEY_ID" --arg s "$PUBLISHER_AWS_SECRET_ACCESS_KEY" \
-    '{region:$r, aws_access_key_id:$k, aws_secret_access_key:$s}')"
-fi
+# publisher static key — cluster-level, REQUIRED. IBM's native SLS/DRO postsync-update-sm jobs
+# read sm_aws_access_key_id/secret (fed from <path:$P/publisher#...>) to write the generated
+# SLS/DRO secrets to AWS Secrets Manager.
+put "$P/publisher" "$(jq -n --arg r "$REGION" --arg k "$PUBLISHER_AWS_ACCESS_KEY_ID" --arg s "$PUBLISHER_AWS_SECRET_ACCESS_KEY" \
+  '{region:$r, aws_access_key_id:$k, aws_secret_access_key:$s}')"
 
 echo
 echo "== secrets under $P =="
