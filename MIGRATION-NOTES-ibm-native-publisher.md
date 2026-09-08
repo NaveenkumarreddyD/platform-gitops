@@ -4,8 +4,8 @@ Branch: `codex/ibm-native-publisher` (this repo) + `codex/ibm-native-publisher` 
 Goal: delete the custom `aws-generated-secrets-publisher` Deployment and let IBM's built-in
 `postsync-update-sm` Jobs publish the generated SLS/DRO secrets to AWS Secrets Manager.
 
-**Status: STAGED / NOT yet functional end-to-end.** The clean half is done; three consumer-side
-items need your values + a test before this branch works. Test on `drroc4` only.
+**Status: IMPLEMENTED — pending a functional test on `drroc4`.** All three original blockers were
+resolved in code using IBM's own `example-config` as the reference (see below). Test before merging to live.
 
 ---
 
@@ -40,17 +40,18 @@ and `sls-applications/100-ibm-sls/templates/08-postsync-update-sm_Job.yaml`:
 Where the job env sets: `ACCOUNT_ID=account_id`, `CLUSTER_ID=cluster_id`,
 `ICN=ibm_customer_number`, `SUBSCRIPTION_ID=subscription_id`.
 
-## ⚠️ Three things to CONFIRM before this works
-1. **CA is base64.** IBM stores `dro_ca_b64enc` / `ca_b64` (base64), but your BASCfg/SLSCfg today
-   consume raw PEM (`ca.crt`). Verify the MAS config chart accepts the b64 field, or add a decode.
-   **This is the main blocker — test it first.**
-2. **SLS path is keyed on IBM entitlement IDs**, not the MAS instance: you must supply
-   `ibm_customer_number` and `subscription_id` to the SLS chart, and read from
-   `<path:${ACCOUNT_ID}/${ICN}/${SUBSCRIPTION_ID}/sls#...>`. These values are not in the env files yet.
-3. **No `mas/` prefix.** IBM writes under `<account>/<cluster>/...` (no leading `mas/`). Either:
-   - widen the AVP path regex in `bootstrap/argocd-cr-avp-sidecar-patch.yaml` (currently `^mas/…`), or
-   - set the DRO/SLS chart value `account_id: "mas/${ACCOUNT_ID}"` so IBM writes `mas/<acct>/<cluster>/dro`
-     and your existing prefix + regex are preserved (check `account_id` isn't reused for tags/labels).
+## The three original blockers — RESOLVED (per IBM example-config)
+1. **b64 CA — solved with AVP's `| base64decode` filter.** IBM's own config does
+   `<path:…/sls#ca_b64 | base64decode>` and `#dro_ca_b64enc | base64decode`; AVP decodes to PEM
+   before injection. No chart change. Applied to both SLSCfg `ca.crt` and BASCfg `dro_ca.crt`.
+2. **SLS path — no ICN/subscription needed.** `ibm_sls` uses the **instance-level** chart
+   (`instance-applications/100-ibm-sls`), whose job writes `<account>/<cluster>/<instance>/sls`
+   (`registration_key`, `ca_b64`) — same structure you already use. The ICN/subscription path only
+   applies to the *standalone* SLS chart, which you don't use. SLS `url` is the internal service DNS
+   `https://sls.mas-<instance>-sls.svc` (IBM does not publish it to SM).
+3. **`mas/` prefix — widened the AVP regex.** `bootstrap/argocd-cr-avp-sidecar-patch.yaml` now allows
+   both `mas/<acct>/<cluster>/…` (seeded secrets) and bare `<acct>/<cluster>/…` (IBM-published SLS/DRO).
+   The `account_id` slash-trick was rejected — that value is used as an identifier/label elsewhere.
 
 ## Test plan (drroc4)
 1. Seed the publisher key: `export PUBLISHER_AWS_ACCESS_KEY_ID=… PUBLISHER_AWS_SECRET_ACCESS_KEY=…` then `./scripts/seed-aws-secrets.sh`.
