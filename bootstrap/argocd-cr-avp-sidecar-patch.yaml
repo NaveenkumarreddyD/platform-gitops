@@ -58,8 +58,10 @@ spec:
             value: "180"
           - name: AVP_TYPE
             value: awssecretsmanager
+          # Allow both the seeded 'mas/<account>/<cluster>/...' paths AND the bare
+          # '<account>/<cluster>/...' paths IBM's native postsync-update-sm jobs write for SLS/DRO.
           - name: AVP_PATH_VALIDATION
-            value: '^mas/[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+){1,3}$'
+            value: '^(mas/)?[A-Za-z0-9._-]+/[A-Za-z0-9._-]+(/[A-Za-z0-9._-]+){1,3}$'
           - name: AWS_REGION
             valueFrom:
               secretKeyRef:

@@ -20,14 +20,12 @@ storageClass: isilon
 # With the mas component, IBM's account root takes over orchestration using its own
 # ApplicationSets, sync waves, and health checks from the official release.
 accountRoot: { autoSync: true, clusterAdminRole: true, applicationAdminRole: true }
-# IBM 8.5.0 SLS/DRO write-back hooks publish a different field contract. Keep those hooks
-# disabled and use this controller to publish the generated values automatically with a
-# separate write-scoped static AWS access key (Secret aws-static-credentials-publisher).
+# SLS/DRO generated secrets are published by IBM's native postsync-update-sm jobs
+# (run_sync_hooks: true in mas-gitops-config). The former custom publisher Deployment
+# (aws-generated-secrets-publisher) was removed on this branch — see
+# MIGRATION-NOTES-ibm-native-publisher.md. The two fields below stay because the MongoDB
+# CA publish job (25-mongodb-instance.yaml) reuses them (aws-cli image + write-scoped key).
 generatedSecretsPublisher:
-  enabled: true
-  namespace: openshift-gitops
-  droNamespace: ibm-software-central
-  pollSeconds: 300
   identitySecret: aws-static-credentials-publisher
   image: "quay.io/ibmmas/cli@sha256:887cc3059a04601241687711df0c03d662931e6719121eec0eb0490001b2c8b9"
 grafana: { namespace: grafana }
