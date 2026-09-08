@@ -10,7 +10,7 @@ required publisher key, and the cluster trust prereq.
 | `mas-gitops-config` | **`main`** | per-cluster/instance config, rendered by `render.sh` |
 | `ibm-mas-gitops` (fork) | **`8.5.0-jdbc-patch`** | stock IBM 8.5.0 + ONE JDBC-nonSSL patch |
 
-- Secrets live **only** in AWS Secrets Manager under `mas/<account>/<cluster>[/<instance>]`, read by
+- Secrets live **only** in AWS Secrets Manager under `<account>/<cluster>[/<instance>]`, read by
   the argocd-vault-plugin sidecar (`AVP_TYPE=awssecretsmanager`) using a **static AWS key**.
 - SLS/DRO generated secrets are published back to AWS SM by **IBM's native `postsync-update-sm` jobs**
   (`run_sync_hooks: true`), using the **publisher** key. (The old custom publisher Deployment is gone.)
@@ -24,7 +24,7 @@ required publisher key, and the cluster trust prereq.
 
 **Auto-created (do NOT seed):**
 - `…/<instance>/mongo#ca.crt` — cert-manager CA + the Mongo-CA publish job
-- `…/<instance>/sls` and `mas/<account>/<cluster>/dro` — **IBM's native postsync-update-sm jobs**
+- `…/<instance>/sls` and `<account>/<cluster>/dro` — **IBM's native postsync-update-sm jobs**
 
 ---
 
@@ -93,7 +93,7 @@ done
 ## Step 3 — Configure the instance, render, push
 ```bash
 cd ../mas-gitops-config
-# new cluster: cp envs/env3.env.example envs/<cluster>.env and set ACCOUNT_ID/CLUSTER_ID/INSTANCE_ID/
+# new cluster: cp envs/example.env.example envs/<cluster>.env and set ACCOUNT_ID/CLUSTER_ID/INSTANCE_ID/
 # WORKSPACE_ID/MAS_DOMAIN/MANAGE_ATTACHMENT_PROVIDER (filestorage | s3-migration | s3) etc.
 ./render.sh <cluster>
 git add -A && git commit -m "render <cluster>" && git push        # then promote GitHub main -> GitLab main

@@ -36,7 +36,7 @@ check instanceId "$P_INSTANCE" "${INSTANCE_ID:-}"
 check ibmRelease "$P_REV" "8.5.0-jdbc-patch"
 
 config_root="$(cd "$(dirname "$ENVFILE")/.." && pwd)"
-expected="mas/${ACCOUNT_ID}/${CLUSTER_ID}"
+expected="${ACCOUNT_ID}/${CLUSTER_ID}"
 # Use grep (present on every RHEL host) instead of ripgrep, so a bastion without
 # ripgrep installed cannot produce a false PASS on the legacy check or a false FAIL
 # on the AWS check.

@@ -38,7 +38,7 @@ The sidecar image has no `aws` CLI, so verify through AVP rather than `aws sts`:
 ```bash
 oc exec -n openshift-gitops deployment/openshift-gitops-repo-server \
   -c avp-helm -- printenv AVP_TYPE AWS_REGION
-printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: t\nstringData:\n  u: <path:mas/<account>/<cluster>/<instance>/jdbc-system#username>\n' \
+printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: t\nstringData:\n  u: <path:<account>/<cluster>/<instance>/jdbc-system#username>\n' \
   | oc exec -i -n openshift-gitops deployment/openshift-gitops-repo-server \
   -c avp-helm -- argocd-vault-plugin generate -
 ```
@@ -47,7 +47,7 @@ Check the following:
 
 - The `aws-static-credentials` Secret exists and its `region`, `aws_access_key_id`, and
   `aws_secret_access_key` values are correct and not expired or deactivated.
-- The IAM access key can read the exact `mas/<account>/<cluster>/...` secret ARN.
+- The IAM access key can read the exact `<account>/<cluster>/...` secret ARN.
 - Customer-managed KMS keys allow this IAM user to decrypt through Secrets Manager.
 - Egress to Secrets Manager is allowed.
 - The secret exists and the JSON field has the exact case used by the placeholder.

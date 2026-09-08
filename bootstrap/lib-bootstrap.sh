@@ -34,7 +34,7 @@ env_account(){
 env_cluster(){ cfg "$COMMON" clusterId; }
 env_instance(){ cfg "$VALUES" instanceId; }
 env_mongo_ns(){ grep -oE 'namespace: *[A-Za-z0-9._-]+' "$VALUES" | head -1 | sed -E 's/.*: *//'; }
-aws_cluster_path(){ echo "mas/$(env_account)/$(env_cluster)"; }
+aws_cluster_path(){ echo "$(env_account)/$(env_cluster)"; }
 aws_instance_path(){ echo "$(aws_cluster_path)/$(env_instance)"; }
 
 env_feature_enabled(){

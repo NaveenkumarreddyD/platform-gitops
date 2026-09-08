@@ -32,7 +32,7 @@ MONGO_HOST="${MONGO_HOST:-${INSTANCE}-mongo-svc.${MONGO_NS}.svc.cluster.local}"
 # MANAGE_CRYPTO_KEY / MANAGE_CRYPTOX_KEY      — only when reusing a Manage DB
 # POWERSCALE_S3_SUBCA / POWERSCALE_S3_ROOTCA  — only for S3 attachments
 
-P="mas/${CLUSTER}/${CLUSTER}"
+P="${CLUSTER}/${CLUSTER}"
 IP="${P}/${INSTANCE}"
 
 put() {  # put <secret-name> <json-string>
