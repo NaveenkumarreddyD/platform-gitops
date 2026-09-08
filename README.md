@@ -1,49 +1,47 @@
 # IBM MAS platform GitOps
 
-Deploys a fresh IBM MAS installation on OpenShift with HashiCorp Vault as the temporary
-secrets backend (until AWS Secrets Manager). Argo CD reconciles; operators run the numbered
-bootstrap scripts and administer Vault manually while it is the temporary backend.
+This repository installs IBM Maximo Application Suite on OpenShift with Argo CD and
+AWS Secrets Manager. It uses the IBM MAS GitOps `8.5.0` release from the internal fork
+`https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git` (revision `8.5.0-jdbc-patch`) — stock
+upstream except that the JDBC config chart's `sslEnabled` is made configurable
+(`jdbc_ssl_enabled`) so a non-SSL database can be used.
 
-## Repositories
+## Design
 
-| Repository | Responsibility | Branch |
-|---|---|---|
-| `platform-gitops` | Operators (cert-manager), Vault, MongoDB, bootstrap, IBM account root | `main` |
-| `mas-gitops-config` | IBM cluster + instance configuration (per-account) | `main` |
-| `ibm-mas-gitops` | IBM release + temporary Vault/JDBC compatibility patch | `8.4.0-vault-patch` |
+- `platform-gitops`: Argo CD bootstrap, cert-manager, MongoDB, and the IBM account root.
+- `mas-gitops-config`: environment-specific IBM chart values and secret references.
+- IBM's repository: consumed from the internal GitLab fork at the pinned revision (see above) —
+  NOT the public GitHub release; the fork carries the one `jdbc_ssl_enabled` patch.
+- AWS Secrets Manager: stores deployment secrets under `mas/<account>/<cluster>/...`.
+- AWS authentication: the Argo CD repo-server and publisher authenticate with a **static
+  AWS access key** read from a Kubernetes Secret (`aws-static-credentials`) via plain
+  `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` environment variables. This is
+  the simple bootstrap approach; it keeps a long-lived key in the cluster, so the keys must
+  be least-privileged and rotated. See [INSTALL.md](INSTALL.md) for the security note.
+- Generated-secret publisher: automatically copies SLS and DRO registration into AWS
+  Secrets Manager with a separate, write-scoped static key (`aws-static-credentials-publisher`)
+  and IAM user.
 
-## Decoupled components
+The `argocd-vault-plugin` executable remains because that is the upstream plugin name used
+by IBM's charts. Its configured backend is `awssecretsmanager` (`AVP_TYPE=awssecretsmanager`);
+no HashiCorp service, policy, token, or storage is part of this design.
 
-No app-of-apps, no `installStage`. Operators, Vault, MongoDB, and MAS are **independent** Argo CD
-Applications, each deployed by its own numbered script and coupled only through Vault secret paths:
+## Install order
 
 ```text
-00-prereqs → 05-operators → 10-vault → 11-vault-config → seed-secrets → 12-vault-verify → 20-mongodb → 30-mas
+00-prereqs -> 05-operators -> 20-mongodb -> 30-mas
 ```
 
-The MongoDB step installs the vendor operator first, waits for its CRDs and deployment, and only
-then creates the database instance. Each script asserts its prerequisite and refuses to run early. `./scripts/status.sh <env>` shows
-every component at a glance. Any layer can be redeployed on its own.
+The scripts are small, idempotent command wrappers. Argo CD and the IBM charts perform the
+deployment. Use [INSTALL.md](INSTALL.md) for the supported procedure,
+[MANUAL-INSTALL.md](MANUAL-INSTALL.md) for the equivalent direct commands, and
+[RUNBOOK.md](RUNBOOK.md) for operations.
 
-## Layout
+## Repository layout
 
 ```text
-bootstrap/   Numbered install scripts + seed-secrets + one-time Argo CD resources/patches
-gitops/      Component Helm chart (--set component=…) + per-env values (envs/<cluster>/)
-workloads/   MongoDB, OLM operators (cert-manager/grafana), and Grafana charts
-vault-auth/  Least-privilege Vault policies
-scripts/     status, preflight, teardown
+bootstrap/   Argo CD integration and four ordered bootstrap wrappers
+gitops/      Component chart and environment values
+workloads/   MongoDB, generated-secret publisher, OLM operator, and optional Grafana charts
+scripts/     Read-only status/preflight plus Manage key backup
 ```
-
-Start with [INSTALL.md](INSTALL.md); use [RUNBOOK.md](RUNBOOK.md) for troubleshooting and recovery.
-
-## Temporary Vault workaround
-
-IBM MAS GitOps `8.4.0` supports AWS Secrets Manager. Until that is available, the internal
-`8.4.0-vault-patch` branch changes only the SLS/DRO runtime write-back (to Vault instead of AWS SM)
-and the external Oracle JDBC SSL toggle — see `PATCH.md` in that repository. Revert to an
-unmodified IBM release when AWS Secrets Manager and Oracle TCPS are available.
-
-Vault uses the official Helm chart's OpenShift service-CA integration, a re-encrypt Route, and
-verified TLS for AVP and the IBM SLS/DRO write-back Jobs. Static secret seeding requires the root
-token; subsequent preflight checks authenticate through the read-only `mas-gitops` Kubernetes role.

@@ -1,25 +1,16 @@
 #!/usr/bin/env bash
-# Shared helpers for the decoupled component bootstrap scripts (00→30).
-# Each component (vault, MongoDB operator/instance, mas) is an independent Argo CD Application rendered from the
-# gitops/ chart with --set component=<name> and applied directly. There is no app-of-apps parent
-# and no installStage; components couple only through Vault secret paths. Ordering is enforced by
-# each script asserting its own prerequisite (e.g. 30-mas refuses to run until Vault is verified
-# and MongoDB is Running), so you cannot silently skip a dependency.
+# Shared helpers for the ordered platform bootstrap scripts (00 -> 30).
 
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 ARGO_NS="${ARGO_NS:-openshift-gitops}"
-VAULT_NS="${VAULT_NS:-vault}"
-# Vault is HTTP (non-TLS) — see gitops/templates/secrets-vault/10-vault-server.yaml. No CACERT /
-# server-name needed. Kept as a single override point if TLS is ever restored.
-VAULT_ADDR_IN_POD="${VAULT_ADDR_IN_POD:-http://127.0.0.1:8200}"
-AVP_VAULT_ADDR="${AVP_VAULT_ADDR:-http://vault-active.vault.svc.cluster.local:8200}"
+AWS_IDENTITY_SECRET="${AWS_IDENTITY_SECRET:-aws-static-credentials}"
+AWS_PUBLISHER_IDENTITY_SECRET="${AWS_PUBLISHER_IDENTITY_SECRET:-aws-static-credentials-publisher}"
 
 die(){ echo "ERROR: $*" >&2; exit 1; }
 say(){ echo ">> $*"; }
 
-# resolve_env <env> : sets ENV, COMMON, VALUES and asserts they exist.
 resolve_env(){
   ENV="${1:?usage: $(basename "$0") <env>   (e.g. doc4)}"
   COMMON="$ROOT/gitops/envs/$ENV/common.yaml"
@@ -27,102 +18,137 @@ resolve_env(){
   [[ -f "$COMMON" && -f "$VALUES" ]] || die "env files gitops/envs/$ENV/{common,values}.yaml not found"
 }
 
-# require_cluster : assert oc login + OpenShift GitOps present.
 require_cluster(){
-  command -v oc   >/dev/null 2>&1 || die "oc not found in PATH"
+  command -v oc >/dev/null 2>&1 || die "oc not found in PATH"
   command -v helm >/dev/null 2>&1 || die "helm not found in PATH"
   oc whoami >/dev/null 2>&1 || die "not logged in to OpenShift (oc login ...)"
-  oc get argocd "$ARGO_NS" -n "$ARGO_NS" >/dev/null 2>&1 \
-    || die "OpenShift GitOps ArgoCD '$ARGO_NS' not found — run ./bootstrap/00-prereqs.sh $ENV first"
+  oc get argocd "$ARGO_NS" -n "$ARGO_NS" >/dev/null 2>&1 || die "OpenShift GitOps ArgoCD '$ARGO_NS' not found - run ./bootstrap/00-prereqs.sh $ENV first"
 }
 
-# cfg <file> <key> : read a top-level scalar (grep-based, matches preflight-consistency.sh).
 cfg(){ grep -E "^$2:" "$1" 2>/dev/null | head -1 | sed -E 's/^[^:]*: *//; s/[ "].*//'; }
-# inline <file> <regex-after-colon> : read a value from an inline-flow map, e.g. vault: { host: X }.
-inline(){ grep -oE "$2: *[A-Za-z0-9._:/-]+" "$1" 2>/dev/null | head -1 | sed -E 's/.*: *//'; }
-
-# env identity (account defaults to the global 'mas' when not overridden per-env).
-env_account(){ local a; a="$(grep -oE 'account: *\{ *id: *[A-Za-z0-9._-]+' "$COMMON" | head -1 | sed -E 's/.*id: *//')"; echo "${a:-mas}"; }
+env_account(){
+  local value
+  value="$(grep -oE 'account: *\{ *id: *[A-Za-z0-9._-]+' "$COMMON" | head -1 | sed -E 's/.*id: *//')"
+  echo "${value:-mas}"
+}
 env_cluster(){ cfg "$COMMON" clusterId; }
 env_instance(){ cfg "$VALUES" instanceId; }
-env_vault_host(){ inline "$COMMON" host; }
 env_mongo_ns(){ grep -oE 'namespace: *[A-Za-z0-9._-]+' "$VALUES" | head -1 | sed -E 's/.*: *//'; }
+aws_cluster_path(){ echo "mas/$(env_account)/$(env_cluster)"; }
+aws_instance_path(){ echo "$(aws_cluster_path)/$(env_instance)"; }
 
-# env_feature_enabled <name> : resolve enable.<name>, preferring the environment override.
 env_feature_enabled(){
   local key="$1" value
-  value="$(awk -v key="$key" '
-    /^enable:[[:space:]]*$/ { inside=1; next }
-    inside && /^[^[:space:]]/ { exit }
-    inside && $1 == key ":" { print tolower($2); exit }
-  ' "$VALUES")"
+  value="$(awk -v key="$key" '/^enable:[[:space:]]*$/ { inside=1; next } inside && /^[^[:space:]]/ { exit } inside && $1 == key ":" { print tolower($2); exit }' "$VALUES")"
   if [[ -z "$value" ]]; then
-    value="$(awk -v key="$key" '
-      /^enable:[[:space:]]*$/ { inside=1; next }
-      inside && /^[^[:space:]]/ { exit }
-      inside && $1 == key ":" { print tolower($2); exit }
-    ' "$ROOT/gitops/values.yaml")"
+    value="$(awk -v key="$key" '/^enable:[[:space:]]*$/ { inside=1; next } inside && /^[^[:space:]]/ { exit } inside && $1 == key ":" { print tolower($2); exit }' "$ROOT/gitops/values.yaml")"
   fi
   [[ "$value" == "true" ]]
 }
 
-# vault_path : secret/<account>/<cluster>/<instance>  (matches gitops.path helper + config repo).
-vault_path(){ echo "secret/$(env_account)/$(env_cluster)/$(env_instance)"; }
-vault_cluster_path(){ echo "secret/$(env_account)/$(env_cluster)"; }
-
-# render_component <component> : emit the component's manifests (runs validate.yaml guards too).
 render_component(){
   local component="$1"; shift
   helm template platform "$ROOT/gitops" -f "$COMMON" -f "$VALUES" --set component="$component" "$@"
 }
-# apply_component <component> : render + oc apply.
+
 apply_component(){
   local component="$1"; shift
-  say "rendering + applying component '$component' to $ARGO_NS"
+  say "rendering and applying component '$component' to $ARGO_NS"
   render_component "$component" "$@" | oc apply -f -
 }
 
-# vault_exec <token-or-empty> <vault args...> : TLS-authenticated Vault CLI in vault-0.
-vault_exec(){
-  local tok="$1"; shift
-  local -a vault_env=( "VAULT_ADDR=$VAULT_ADDR_IN_POD" )
-  [[ -n "$tok" ]] && vault_env+=("VAULT_TOKEN=$tok")
-  oc exec -n "$VAULT_NS" vault-0 -- env "${vault_env[@]}" vault "$@"
+validate_static_credentials(){
+  local secret_name="${1:?secret name required}" purpose="${2:?identity purpose required}" key value
+  oc get secret "$secret_name" -n "$ARGO_NS" >/dev/null 2>&1 || die "Secret $ARGO_NS/$secret_name is missing for $purpose (see INSTALL.md)"
+  for key in region aws_access_key_id aws_secret_access_key; do
+    value="$(oc get secret "$secret_name" -n "$ARGO_NS" -o "jsonpath={.data.$key}" 2>/dev/null || true)"
+    [[ -n "$value" ]] || die "Secret $ARGO_NS/$secret_name is missing '$key'"
+  done
 }
 
-vault_exec_stdin(){
-  local tok="$1"; shift
-  oc exec -i -n "$VAULT_NS" vault-0 -- env \
-    "VAULT_ADDR=$VAULT_ADDR_IN_POD" "VAULT_TOKEN=$tok" vault "$@"
+validate_aws_identity_inputs(){
+  validate_static_credentials "$AWS_IDENTITY_SECRET" "read-only manifest generation"
+  validate_static_credentials "$AWS_PUBLISHER_IDENTITY_SECRET" "generated SLS/DRO publishing"
 }
 
-# OpenShift GitOps may run repo-server with the namespace default ServiceAccount.
-repo_server_sa(){
-  local sa
-  sa="$(oc get pods -n "$ARGO_NS" -l app.kubernetes.io/name=openshift-gitops-repo-server \
-    -o jsonpath='{.items[0].spec.serviceAccountName}' 2>/dev/null || true)"
-  [[ -n "$sa" ]] || sa="$(oc get deployment openshift-gitops-repo-server -n "$ARGO_NS" \
-    -o jsonpath='{.spec.template.spec.serviceAccountName}' 2>/dev/null || true)"
-  echo "${sa:-default}"
-}
-
-# Assert that the running AVP sidecar is using the same Vault endpoint as the Argo CD patch.
-# This catches a stale repo-server pod before an Application reaches manifest generation.
 verify_avp_repo_server(){
-  local actual
-  actual="$(oc exec -n "$ARGO_NS" deployment/openshift-gitops-repo-server \
-    -c avp-helm -- printenv VAULT_ADDR 2>/dev/null | tr -d '\r' || true)"
-  [[ -n "$actual" ]] \
-    || die "AVP sidecar is unavailable — run ./bootstrap/00-prereqs.sh $ENV"
-  [[ "$actual" == "$AVP_VAULT_ADDR" ]] \
-    || die "AVP sidecar VAULT_ADDR is '$actual', expected '$AVP_VAULT_ADDR' — run ./bootstrap/00-prereqs.sh $ENV"
+  # Right after a repo-server rollout the old pod is still terminating, and
+  # `oc exec deployment/...` can land on it and return nothing. Target a Running,
+  # non-terminating pod and retry until the avp-helm sidecar reports the CMP.
+  local type region pod i
+  for i in $(seq 1 30); do
+    pod="$(oc get pods -n "$ARGO_NS" -l app.kubernetes.io/name=openshift-gitops-repo-server \
+      -o go-template='{{range .items}}{{if and (not .metadata.deletionTimestamp) (eq .status.phase "Running")}}{{.metadata.name}}{{"\n"}}{{end}}{{end}}' 2>/dev/null | head -1)"
+    if [[ -n "$pod" ]]; then
+      type="$(oc exec -n "$ARGO_NS" "$pod" -c avp-helm -- printenv AVP_TYPE 2>/dev/null | tr -d '\r' || true)"
+      region="$(oc exec -n "$ARGO_NS" "$pod" -c avp-helm -- printenv AWS_REGION 2>/dev/null | tr -d '\r' || true)"
+      [[ "$type" == "awssecretsmanager" && -n "$region" ]] && return 0
+    fi
+    sleep 5
+  done
+  die "AWS Secrets Manager CMP is unavailable after retries - inspect: oc exec -n $ARGO_NS deploy/openshift-gitops-repo-server -c avp-helm -- printenv AVP_TYPE AWS_REGION"
 }
 
-# Log in through the same read-only Kubernetes auth role used by the AVP sidecar.
-vault_k8s_token(){
-  local sa jwt
-  sa="$(repo_server_sa)"
-  jwt="$(oc create token "$sa" -n "$ARGO_NS" --duration=10m)" \
-    || die "could not create a short-lived token for $ARGO_NS/$sa"
-  vault_exec "" write -field=token auth/kubernetes/login role=mas-gitops jwt="$jwt"
+mongo_ca_published(){
+  # True once the cert-manager Mongo CA public cert has been published to mongo#ca.crt
+  # (by the mongodb app's PostSync job) and AVP can resolve it. MAS MongoCfg and SLS both
+  # read this field, so this gates the handoff from 20-mongodb.sh to 30-mas.sh.
+  local ipath; ipath="$(aws_instance_path)"
+  printf 'apiVersion: v1\nkind: Secret\nmetadata:\n  name: mongo-ca-check\nstringData:\n  ca: <path:%s/mongo#ca.crt>\n' "$ipath" \
+    | oc exec -i -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- argocd-vault-plugin generate - >/dev/null 2>&1
+}
+
+verify_aws_secrets(){
+  local set_name="${1:?verify_aws_secrets requires mongo, mas, or generated}"
+  local ipath cpath manifest
+  ipath="$(aws_instance_path)"
+  cpath="$(aws_cluster_path)"
+  case "$set_name" in
+    mongo)
+      manifest="apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-preflight-mongo
+stringData:
+  mongoPassword: <path:$ipath/mongo#password>
+  slsMongoUsername: <path:$ipath/sls-mongo#username>
+  slsMongoPassword: <path:$ipath/sls-mongo#password>"
+      # Note: the Mongo CA is generated by cert-manager in-cluster and its public cert is
+      # published to mongo#ca.crt after the mongo instance syncs; it is not seeded here.
+      ;;
+    mas)
+      manifest="apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-preflight-mas
+stringData:
+  entitlement: <path:$cpath/entitlement#image_pull_secret_b64>
+  license: <path:$ipath/license#license_file>
+  jdbcUsername: <path:$ipath/jdbc-system#username>
+  jdbcPassword: <path:$ipath/jdbc-system#password>
+  jdbcUrl: <path:$ipath/jdbc-system#jdbc_url>
+  mongoUsername: <path:$ipath/mongo#username>
+  mongoPassword: <path:$ipath/mongo#password>
+  mongoHost: <path:$ipath/mongo#host>
+  mongoCa: <path:$ipath/mongo#ca.crt>
+  publicTlsCert: <path:$ipath/certs/public#tls_crt_b64>
+  publicTlsKey: <path:$ipath/certs/public#tls_key_b64>
+  publicCaCert: <path:$ipath/certs/public#ca_crt_b64>"
+      ;;
+    generated)
+      manifest="apiVersion: v1
+kind: Secret
+metadata:
+  name: aws-preflight-generated
+stringData:
+  slsUrl: <path:$ipath/sls#url>
+  slsRegistrationKey: <path:$ipath/sls#registration_key>
+  slsCa: <path:$ipath/sls#ca.crt>
+  droUrl: <path:$cpath/dro#url>
+  droApiToken: <path:$cpath/dro#api_token>
+  droCa: <path:$cpath/dro#ca.crt>"
+      ;;
+    *) die "unknown AWS secret set '$set_name'" ;;
+  esac
+  printf '%s\n' "$manifest" | oc exec -i -n "$ARGO_NS" deployment/openshift-gitops-repo-server -c avp-helm -- argocd-vault-plugin generate - >/dev/null || die "AWS Secrets Manager preflight failed for '$set_name' under $ipath"
 }

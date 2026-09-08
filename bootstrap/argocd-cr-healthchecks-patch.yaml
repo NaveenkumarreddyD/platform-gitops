@@ -24,8 +24,8 @@ spec:
     # Speed up how quickly ArgoCD notices new Config Repository commits during a deployment.
     # ArgoCD default is timeout.reconciliation=120s + jitter=60s (=> up to ~3 min before a
     # pushed commit is auto-detected). Lowering to 90s + 30s jitter picks up mid-deploy commits
-    # in ~60-120s. Kept moderate on purpose: every reconcile re-runs the AVP plugin (Vault reads),
-    # so going much lower increases Vault load. For an immediate pull, annotate the Application
+    # in ~60-120s. Every reconcile re-runs the secret substitution plugin, so a lower
+    # interval increases AWS API traffic. For an immediate pull, annotate the Application
     # with argocd.argoproj.io/refresh=hard.
     # The OpenShift GitOps operator rolls the application-controller + repo-server when this changes.
     timeout.reconciliation: "90s"

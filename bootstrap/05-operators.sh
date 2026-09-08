@@ -40,4 +40,4 @@ if env_feature_enabled grafana; then
   apply_component grafana
 fi
 
-say "done. NEXT: ./bootstrap/10-vault.sh $ENV"
+say "done. NEXT: ./bootstrap/20-mongodb.sh $ENV"

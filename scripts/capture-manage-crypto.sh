@@ -1,35 +1,44 @@
 #!/usr/bin/env bash
-# capture-manage-crypto.sh <env> — make the MAS layer truly redeployable.
-#
-# WHY: with autoGenerateEncryptionKeys=true (the safe first-install default), MAS generates its
-# Manage encryption keys into a Kubernetes Secret. If you later delete/rebuild the MAS namespace
-# you LOSE those keys and can no longer decrypt the existing database. This script copies the
-# generated keys into Vault (path manage-crypto) so they survive a MAS rebuild. After capturing,
-# flip the env to autoGenerateEncryptionKeys=false and re-render — MAS then reads the keys from
-# Vault on every (re)deploy and always reattaches to the same data.
-#
-# Run ONCE, after Manage is first Ready. Requires: export VAULT_ROOT_TOKEN=...
+# Save Manage encryption keys to AWS Secrets Manager using the caller's federated AWS session.
+set -euo pipefail
 source "$(cd "$(dirname "$0")/../bootstrap" && pwd)/lib-bootstrap.sh"
-resolve_env "${1:-}"; require_cluster
-: "${VAULT_ROOT_TOKEN:?export VAULT_ROOT_TOKEN before running}"
+resolve_env "${1:-}"
+require_cluster
+command -v aws >/dev/null 2>&1 || die "aws CLI not found"
+command -v jq >/dev/null 2>&1 || die "jq not found"
+: "${AWS_REGION:?set AWS_REGION for the approved federated AWS session}"
+
 INSTANCE="$(env_instance)"
 MANAGE_NS="mas-${INSTANCE}-manage"
-VPATH="$(vault_path)/manage-crypto"
+SECRET_ID="$(aws_instance_path)/manage-crypto"
+K8S_SECRET="$(oc get secret -n "$MANAGE_NS" -o name 2>/dev/null \
+  | grep -E 'manage-encryptionsecret' | head -1 || true)"
+[[ -n "$K8S_SECRET" ]] || die "no Manage encryption secret found in $MANAGE_NS"
 
-SEC="$(oc get secret -n "$MANAGE_NS" -o name 2>/dev/null | grep -E 'manage-encryptionsecret' | head -1)"
-[[ -n "$SEC" ]] || { echo "ERROR: no *-manage-encryptionsecret in $MANAGE_NS — is Manage installed and Ready?" >&2; exit 1; }
-echo ">> found $SEC in $MANAGE_NS; its data keys:"
-oc get "$SEC" -n "$MANAGE_NS" -o go-template='{{range $k,$v := .data}}   {{$k}}{{"\n"}}{{end}}'
+CRYPTO_KEY_FIELD="${CRYPTO_KEY_FIELD:-MXE_SECURITY_CRYPTO_KEY}"
+CRYPTOX_KEY_FIELD="${CRYPTOX_KEY_FIELD:-MXE_SECURITY_CRYPTOX_KEY}"
+crypto_key="$(oc get "$K8S_SECRET" -n "$MANAGE_NS" \
+  -o "jsonpath={.data.$CRYPTO_KEY_FIELD}" | base64 -d)"
+cryptox_key="$(oc get "$K8S_SECRET" -n "$MANAGE_NS" \
+  -o "jsonpath={.data.$CRYPTOX_KEY_FIELD}" | base64 -d)"
+[[ -n "$crypto_key" && -n "$cryptox_key" ]] \
+  || die "expected fields were not found in $K8S_SECRET"
 
-# The config template reads manage-crypto#cryptoKey and #cryptoxKey. Map the secret's fields with
-# CRYPTO_KEY_FIELD / CRYPTOX_KEY_FIELD if the discovered names differ from these defaults.
-CK_FIELD="${CRYPTO_KEY_FIELD:-MXE_SECURITY_CRYPTO_KEY}"
-CX_FIELD="${CRYPTOX_KEY_FIELD:-MXE_SECURITY_CRYPTOX_KEY}"
-ck="$(oc get "$SEC" -n "$MANAGE_NS" -o jsonpath="{.data.$CK_FIELD}" 2>/dev/null | base64 -d 2>/dev/null || true)"
-cx="$(oc get "$SEC" -n "$MANAGE_NS" -o jsonpath="{.data.$CX_FIELD}" 2>/dev/null | base64 -d 2>/dev/null || true)"
-[[ -n "$ck" && -n "$cx" ]] || { echo "ERROR: fields $CK_FIELD / $CX_FIELD not found — re-run with CRYPTO_KEY_FIELD=<name> CRYPTOX_KEY_FIELD=<name> from the list above." >&2; exit 1; }
+umask 077
+payload="$(mktemp)"
+trap 'rm -f "$payload"' EXIT
+jq -n --arg cryptoKey "$crypto_key" --arg cryptoxKey "$cryptox_key" \
+  '{cryptoKey:$cryptoKey, cryptoxKey:$cryptoxKey}' > "$payload"
+unset crypto_key cryptox_key
 
-echo ">> writing $VPATH (cryptoKey, cryptoxKey) to Vault"
-vault_exec "$VAULT_ROOT_TOKEN" kv put "$VPATH" cryptoKey="$ck" cryptoxKey="$cx" >/dev/null
-echo ">> done. Now set MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=false in the config env, re-render,"
-echo "   commit + push. The MAS layer is now redeployable — it reads these keys from Vault."
+if aws secretsmanager describe-secret --region "$AWS_REGION" \
+  --secret-id "$SECRET_ID" >/dev/null 2>&1; then
+  aws secretsmanager put-secret-value --region "$AWS_REGION" \
+    --secret-id "$SECRET_ID" --secret-string "file://$payload" >/dev/null
+else
+  aws secretsmanager create-secret --region "$AWS_REGION" \
+    --name "$SECRET_ID" --secret-string "file://$payload" >/dev/null
+fi
+
+echo "Saved Manage encryption keys to AWS Secrets Manager: $SECRET_ID"
+echo "Set MANAGE_AUTO_GENERATE_ENCRYPTION_KEYS=false before reusing this database."
