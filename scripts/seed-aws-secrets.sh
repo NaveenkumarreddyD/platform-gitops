@@ -64,6 +64,15 @@ if [ -n "${POWERSCALE_S3_SUBCA:-}" ] && [ -n "${POWERSCALE_S3_ROOTCA:-}" ]; then
   put "$IP/manage-cos" "$(jq -n --arg s "$POWERSCALE_S3_SUBCA" --arg r "$POWERSCALE_S3_ROOTCA" '{powerscale_s3_subca:$s,powerscale_s3_rootca:$r}')"
 fi
 
+# publisher static key — cluster-level. Only needed if you use IBM's native postsync-update-sm
+# jobs (run_sync_hooks: true) to publish SLS/DRO, instead of the platform publisher Deployment.
+# IBM's DRO/SLS charts read sm_aws_access_key_id/secret and mount them into the update-sm jobs;
+# point sm.aws_access_key_id at <path:$P/publisher#aws_access_key_id>.
+if [ -n "${PUBLISHER_AWS_ACCESS_KEY_ID:-}" ] && [ -n "${PUBLISHER_AWS_SECRET_ACCESS_KEY:-}" ]; then
+  put "$P/publisher" "$(jq -n --arg r "$REGION" --arg k "$PUBLISHER_AWS_ACCESS_KEY_ID" --arg s "$PUBLISHER_AWS_SECRET_ACCESS_KEY" \
+    '{region:$r, aws_access_key_id:$k, aws_secret_access_key:$s}')"
+fi
+
 echo
 echo "== secrets under $P =="
 aws secretsmanager list-secrets --region "$REGION" \
