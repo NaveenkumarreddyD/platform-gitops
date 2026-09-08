@@ -90,6 +90,50 @@ publisher key the same way against `aws-static-credentials-publisher` (in **both
 and `mongo-gitops`) and re-seed the AWS SM `publisher` secret; then re-sync the DRO/SLS apps so
 IBM's `postsync-update-sm` jobs re-run with the new key.
 
+## Update a secret or cert value (rotate a password / TLS cert / entitlement)
+
+AVP reads AWS Secrets Manager **only at sync time**, so changing a value in AWS does NOT
+auto-propagate. Three steps: update AWS → make Argo CD re-read → restart the consumer.
+
+**1. Update the value in AWS SM.** Each secret is one JSON object, so `put-secret-value`
+replaces the WHOLE object — easiest is to re-run the seed script (it rebuilds the full JSON):
+```bash
+export REGION=us-east-1 CLUSTER=<cluster> INSTANCE=<instance>
+# ...export the changed value (e.g. new TLS_CRT/TLS_KEY/CA_CHAIN, or JDBC_PASSWORD) + the rest...
+./scripts/seed-aws-secrets.sh
+```
+Or update one secret directly (rebuild the full JSON for that secret):
+```bash
+aws secretsmanager put-secret-value --region $REGION \
+  --secret-id <account>/<cluster>/<instance>/jdbc-system \
+  --secret-string '{"username":"maximo","password":"<new>","jdbc_url":"<url>"}'
+```
+
+**2. Make Argo CD re-read AWS and re-apply** (hard refresh re-runs AVP; sync applies it):
+```bash
+oc annotate application <app>.<cluster>[.<instance>] -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+# if auto-sync is off, also sync it:
+oc patch application <app> -n openshift-gitops --type merge -p '{"operation":{"sync":{}}}'
+```
+Also roll the repo-server if the value seems cached: `oc rollout restart deploy/openshift-gitops-repo-server -n openshift-gitops`.
+
+**3. Restart the consumer** so pods pick up the refreshed Secret (mounted secrets are cached):
+```bash
+oc rollout restart deploy/<workload> -n mas-<instance>-<app>
+```
+
+Which app/consumer per secret:
+| Secret | Owning Argo app | Restart |
+|---|---|---|
+| `…/<instance>/certs/public` (TLS) | manage / suite | Manage + re-check the route cert |
+| `…/<instance>/jdbc-system` | instance (JDBCCfg) | Manage pods |
+| `…/<instance>/mongo`, `sls-mongo` | instance (MongoCfg/SLS) | affected pods |
+| `…/entitlement` | account-root | image pulls (delete failing pods) |
+
+**Do NOT hand-edit** `dro`, `sls`, or `mongo#ca.crt` — those are auto-published (IBM jobs +
+cert-manager). To refresh them, re-sync the DRO/SLS app or the mongodb app instead.
+
 ## DRO or SLS registration is missing
 
 SLS/DRO generated secrets are published to AWS SM by IBM's **native `postsync-update-sm` jobs**
