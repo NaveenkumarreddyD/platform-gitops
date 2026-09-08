@@ -26,8 +26,8 @@ name, an unsupported IBM source, etc.). Rendered on every component render.
 
 {{- /* 3. Use the reviewed IBM MAS GitOps fork (stock 8.5.0 plus the JDBC sslEnabled patch). */ -}}
 {{- $repo := (.Values.source).repo_url | toString -}}
-{{- if ne $repo "https://gitlab.lac1.biz/gitops/ibm-gitops.git" -}}
-{{- fail (printf "source.repo_url is '%s'; use the internal IBM MAS GitOps fork https://gitlab.lac1.biz/gitops/ibm-gitops.git" $repo) -}}
+{{- if ne $repo "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git" -}}
+{{- fail (printf "source.repo_url is '%s'; use the internal IBM MAS GitOps fork https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git" $repo) -}}
 {{- end -}}
 {{- $rev := (.Values.source).revision | toString -}}
 {{- if ne $rev "8.5.0-jdbc-patch" -}}
