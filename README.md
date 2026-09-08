@@ -33,9 +33,8 @@ no HashiCorp service, policy, token, or storage is part of this design.
 ```
 
 The scripts are small, idempotent command wrappers. Argo CD and the IBM charts perform the
-deployment. Use [INSTALL.md](INSTALL.md) for the supported procedure,
-[MANUAL-INSTALL.md](MANUAL-INSTALL.md) for the equivalent direct commands, and
-[RUNBOOK.md](RUNBOOK.md) for operations.
+deployment. Use [INSTALL.md](INSTALL.md) for the end-to-end procedure,
+[RUNBOOK.md](RUNBOOK.md) for day-2 operations, and [UNINSTALL.md](UNINSTALL.md) for teardown.
 
 ## Repository layout
 

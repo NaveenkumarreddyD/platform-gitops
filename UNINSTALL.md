@@ -1,105 +1,136 @@
-# MAS Uninstall — GitOps-safe (IBM-recommended)
+# MAS Uninstall — GitOps (official mechanism)
 
-For a **GitOps** install you must **detach Argo CD first**, then use IBM's supported
-`mas uninstall`, then verify no leftovers. Cluster **`drroc4`**, instance **`drgitopsapp`**.
+MAS runs in OpenShift via **OpenShift GitOps (Argo CD)**, config in **`mas-gitops-config`**,
+`auto_delete: false`. Cluster **`drroc4`**, instance **`drgitopsapp`**, workspace **`drgitopswks`**.
 
-Order: **detach Argo CD → `mas uninstall` → verify/clean.**
+**Official GitOps removal = delete the config from the config repo, then Sync-with-Prune.**
+The `ibm-mas/gitops` charts ship **PostDelete hooks** that clean the Suite-owned CRs (MongoCfg,
+DRO MarketplaceConfig) that Argo CD cannot prune — so config-removal is the clean path.
+
+> `mas uninstall` (CLI) is the imperative alternative, used only after detaching Argo CD. For a
+> GitOps install, the steps below are the recommended, GitOps-native way.
+
+## What each part covers
+- **A + B** = remove the **complete MAS application** (Core/Suite, Manage, SLS, DRO, workspaces, catalog) — IBM-recommended GitOps mechanism.
+- **C** = MongoDB + cert-manager + operators — **your platform-gitops layer**, NOT part of IBM's MAS uninstall. Skip it if you plan to reinstall.
 
 ---
 
-## Step 1 — Detach Argo CD (stop it re-syncing)
-Delete the Argo CD Applications **without cascade** (strip the finalizer so they don't hang, and
-leave the workloads in place for `mas uninstall` to remove). Delete the **account-root first** so it
-stops regenerating children.
+## A — Delete the MAS instance (drgitopsapp)
 
+**A1. Remove the instance config from the config repo** (do NOT re-run `render.sh` — it regenerates them):
+```bash
+cd ~/Documents/mas/mas-gitops-config
+git rm -r drroc4/drroc4/drgitopsapp/     # instance-base + suite + suite-configs + masapp-configs + manage-install + workspaces + sls
+git commit -m "remove MAS instance drgitopsapp" && git push
+```
+
+**A2. Refresh the instance root so it re-renders without the config:**
+```bash
+oc annotate application instance.drroc4.drgitopsapp -n openshift-gitops \
+  argocd.argoproj.io/refresh=hard --overwrite
+```
+
+**A3. Sync-with-Prune each MAS child app (leaf-first).** `auto_delete: false` → nothing prunes on its
+own; this triggers it and fires the PostDelete hooks.
 ```bash
 ARGO_NS=openshift-gitops
 
-# why: kill the generator first, or it recreates the child apps.
-oc patch application ibm-mas-account-root -n $ARGO_NS --type merge -p '{"metadata":{"finalizers":null}}' 2>/dev/null || true
-oc delete application ibm-mas-account-root -n $ARGO_NS --wait=false 2>/dev/null || true
+# discover the instance's child apps (all drgitopsapp apps EXCEPT the instance-root)
+CHILDREN=$(oc get applications -n $ARGO_NS -o name | grep drgitopsapp | grep -v '/instance\.drroc4\.drgitopsapp$')
+echo "will prune:"; echo "$CHILDREN"
 
-# why: detach every MAS app for this cluster (non-cascade = workloads stay, Argo stops managing).
-for app in $(oc get applications -n $ARGO_NS -o name | grep drroc4); do
-  oc patch $app -n $ARGO_NS --type merge -p '{"metadata":{"finalizers":null}}'
-  oc delete $app -n $ARGO_NS --wait=false
+for app in $CHILDREN; do
+  echo ">> pruning $app"
+  oc patch $app -n $ARGO_NS --type merge -p '{"operation":{"sync":{"prune":true}}}'
 done
 
-# why: confirm nothing MAS-related is left syncing.
-oc get applications -n $ARGO_NS | grep -E 'drroc4|account-root' || echo "detached: no MAS apps"
-```
-> Pure-GitOps alternative to Step 1: remove the instance + cluster config from the
-> `mas-gitops-config` repo, `./render.sh drroc4`, push — the root app prunes the children.
-> Deleting the Application objects (above) is more reliable and is what makes `mas uninstall` safe.
-
-## Ownership — what MAS owns vs what YOU own
-- **MAS owns** (remove with `mas uninstall`): Core, apps (Manage), **SLS**, **DRO** (+ their OLM operators).
-- **YOU own** (remove via platform-gitops, NOT the mas cli): **MongoDB** (operator + CA + publish job)
-  and **cert-manager** — you installed these in `20-mongodb.sh` / `05-operators.sh`. MAS only *uses* them.
-- `mas uninstall --uninstall-mongodb/--uninstall-cert-manager` targets IBM's *own* Mongo/cert-manager
-  install — **not yours** — so do NOT use those flags. Remove yours in Step 2b.
-
-**Order:** MAS first (it depends on Mongo) → MongoDB → cert-manager **last** (it underpins the Mongo CA).
-
-## Step 2 — Uninstall MAS only (+ SLS/DRO) with the supported CLI
-```bash
-# why: you must be logged in; the CLI drives the official MAS uninstall pipeline on THIS cluster.
-oc login <api-url> -u <user>
-
-# why: removes MAS core + apps + SLS + DRO (and cleans their CSVs). NOT mongo/cert-manager — those are yours.
-docker run -ti --rm --pull always quay.io/ibmmas/cli mas uninstall \
-  --mas-instance-id drgitopsapp \
-  --uninstall-sls \
-  --uninstall-dro \
-  --no-confirm
-# podman works too. If quay.io is blocked, use your internal mirror of quay.io/ibmmas/cli.
-# Mongo data is preserved regardless (you own Mongo). Interactive form: run with no flags.
+# watch them drain (Manage takes longest)
+oc get applications -n $ARGO_NS | grep drgitopsapp
+oc get pods -n mas-drgitopsapp-manage 2>/dev/null | tail
 ```
 
-## Step 2b — Remove MongoDB + cert-manager (yours) — ONLY for a full wipe
-Skip this if you plan to reinstall MAS on the same cluster (keep Mongo + cert-manager in place).
+**A4. Prune, then delete, the instance root app** (ApplicationSet-generated → must delete explicitly):
 ```bash
-# why: remove YOUR MongoDB (operator + CA + publish job) after MAS is gone.
-oc delete mongodbcommunity --all -n mongo-gitops --wait=false 2>/dev/null || true
-oc delete subscription -n mongo-gitops --all 2>/dev/null || true
-for c in $(oc get csv -n mongo-gitops -o name 2>/dev/null); do oc delete $c -n mongo-gitops; done
-oc delete ns mongo-gitops --wait=false 2>/dev/null || true
-
-# why: cert-manager LAST, and only if nothing else on the cluster uses it.
-#      (Mongo CA, and possibly other workloads, depend on it — check first.)
-oc get certificates,issuers,clusterissuers -A | grep -v mongo    # anything else using cert-manager?
-# if clear, remove the cert-manager operator (adjust ns/name to your install):
-# oc delete subscription cert-manager -n cert-manager 2>/dev/null || true
-# for c in $(oc get csv -n cert-manager -o name); do oc delete $c -n cert-manager; done
-```
-
-## Step 3 — Verify no leftovers (the stuff that breaks the next install)
-```bash
-# why: orphaned CSVs deadlock the next OLM install (your DRO issue). Expect NONE.
-oc get csv -A | grep -iE 'ibm-mas|data-reporter|metrics|ibm-sls|mongodb' || echo "no MAS CSVs"
-
-# why: namespaces stuck Terminating hold the instance name. Expect NONE.
-oc get ns | grep -E 'mas-drgitopsapp|ibm-software-central|mongo-gitops' || echo "no MAS namespaces"
-
-# why: one-shot report of both, plus force-clears anything stuck.
-./scripts/teardown-cluster.sh drroc4 drgitopsapp --dry-run
-```
-
-## Step 4 — Remove residual Argo CD config (only if NOT reinstalling)
-```bash
-oc delete appproject mas -n openshift-gitops 2>/dev/null || true
-# repo cred / AWS keys — keep them if you plan to reinstall:
-# oc delete secret gitlab-gitops-group-repo-creds aws-static-credentials aws-static-credentials-publisher -n openshift-gitops
+oc patch application instance.drroc4.drgitopsapp -n $ARGO_NS --type merge -p '{"operation":{"sync":{"prune":true}}}'
+oc delete application instance.drroc4.drgitopsapp -n $ARGO_NS
 ```
 
 ---
 
-## If `mas uninstall` isn't usable (no quay access / air-gapped)
-Your `teardown-cluster.sh` does the same ordered teardown manually and is safe to use instead of
-Step 2 (it deletes each operator's Subscription + CSV together, so no orphans, and force-clears
-stuck finalizers):
+## B — Delete the cluster layer (DRO, operator catalog)
+Skip B if reinstalling soon and you want to keep the operator catalog (faster reinstall).
+
+**B1. Remove the cluster config:**
 ```bash
-./scripts/teardown-cluster.sh drroc4 drgitopsapp --dry-run   # preview
-./scripts/teardown-cluster.sh drroc4 drgitopsapp             # do it
+cd ~/Documents/mas/mas-gitops-config
+git rm drroc4/drroc4/ibm-dro.yaml drroc4/drroc4/ibm-operator-catalog.yaml drroc4/drroc4/ibm-mas-cluster-base.yaml
+git commit -m "remove drroc4 cluster MAS config" && git push
 ```
-This is the non-IBM-tool fallback; the IBM-recommended path is Step 1 → `mas uninstall` → verify.
+
+**B2. Sync-with-Prune the cluster apps, then delete the cluster root:**
+```bash
+ARGO_NS=openshift-gitops
+oc annotate application cluster.drroc4 -n $ARGO_NS argocd.argoproj.io/refresh=hard --overwrite 2>/dev/null || true
+# DRO first — its 032-ibm-dro-cleanup PostDelete hook clears the MarketplaceConfig that blocks uninstall
+oc patch application dro.drroc4 -n $ARGO_NS --type merge -p '{"operation":{"sync":{"prune":true}}}'
+# then any other cluster apps for drroc4 (except the cluster-root)
+for app in $(oc get applications -n $ARGO_NS -o name | grep '\.drroc4$' | grep -v '/cluster\.drroc4$'); do
+  oc patch $app -n $ARGO_NS --type merge -p '{"operation":{"sync":{"prune":true}}}'
+done
+oc delete application cluster.drroc4 -n $ARGO_NS 2>/dev/null || true
+```
+
+---
+
+## C — Platform layer (MongoDB, cert-manager, operators) — ONLY for a full wipe
+**Skip this entirely if you are reinstalling MAS on the same cluster** — bootstrap reuses these.
+Not part of IBM's MAS uninstall; these are your platform-gitops apps. cert-manager **last**.
+```bash
+ARGO_NS=openshift-gitops
+# MongoDB (operator + CA + instance)
+oc patch application mongodb -n $ARGO_NS --type merge -p '{"operation":{"sync":{"prune":true}}}'
+oc delete application mongodb mongodb-operator -n $ARGO_NS
+oc delete ns mongo-gitops --wait=false 2>/dev/null || true
+
+# cert-manager LAST, only if nothing else uses it
+oc get certificates,issuers,clusterissuers -A | grep -v mongo    # anything else using it?
+oc delete application operators -n $ARGO_NS 2>/dev/null || true
+# oc delete ns cert-manager cert-manager-operator --wait=false
+```
+
+---
+
+## VERIFY — MAS gone, platform intact, no orphans
+```bash
+echo "== MAS CRs / namespaces / apps (expect none) =="
+oc get suite,manageapp,manageworkspace,workspace.core.mas.ibm.com -A 2>/dev/null || echo "  no MAS CRs"
+oc get ns | grep 'mas-drgitopsapp' || echo "  no MAS namespaces"
+oc get applications -n openshift-gitops | grep -E 'drgitopsapp|\.drroc4$' || echo "  no MAS apps"
+
+echo "== orphaned OLM operators in shared ns (MUST clear before reinstall) =="
+oc get sub,csv -n ibm-software-central | grep -iE 'data-reporter|metrics' || echo "  none"
+# if a CSV remains with no owning Subscription:  oc delete csv <name> -n ibm-software-central
+
+echo "== KEPT for reinstall (expect present) =="
+oc get application mongodb -n openshift-gitops 2>/dev/null
+oc get mongodbcommunity -n mongo-gitops 2>/dev/null
+oc get csv -n cert-manager-operator 2>/dev/null | grep cert-manager
+```
+
+---
+
+## Notes
+- **A + B removes the complete MAS application.** MAS **CRDs** remain (harmless, reused on reinstall).
+- **The one gotcha:** DRO/metrics OLM operators in `ibm-software-central` can leave an **orphaned CSV**
+  (the "constraints not satisfiable / CSV not referenced by a subscription" deadlock). The VERIFY step
+  catches it — clear it before reinstalling.
+- **`auto_delete: false`** is why every removal needs an explicit Sync-with-Prune. If it were `true`,
+  deleting config alone would auto-prune (dev only; risky for prod).
+- **Reinstall:** restore the instance config (`./render.sh drroc4` in mas-gitops-config → push); the
+  account-root regenerates everything against the surviving Mongo + cert-manager.
+
+## References
+- ibm-mas/gitops — docs/orchestration.md (prune + PostDelete teardown hooks)
+- ibm-mas/gitops — docs/accountrootmanifest.md (`auto_delete` behavior)
+- MAS CLI — `mas uninstall` (imperative alternative)

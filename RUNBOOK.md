@@ -86,50 +86,45 @@ oc rollout status deployment/openshift-gitops-repo-server \
 ```
 
 Run the substitution check above, then delete the superseded access key in AWS. Rotate the
-publisher key the same way against `aws-static-credentials-publisher`, restarting
-`deployment/aws-generated-secrets-publisher` instead of the repo-server.
+publisher key the same way against `aws-static-credentials-publisher` (in **both** `openshift-gitops`
+and `mongo-gitops`) and re-seed the AWS SM `publisher` secret; then re-sync the DRO/SLS apps so
+IBM's `postsync-update-sm` jobs re-run with the new key.
 
 ## DRO or SLS registration is missing
 
-The IBM `8.5.0` write-back hooks are intentionally disabled because they require static
-AWS keys. The platform publisher replaces those hooks automatically. Check it first:
+SLS/DRO generated secrets are published to AWS SM by IBM's **native `postsync-update-sm` jobs**
+(`run_sync_hooks: true`), which run on each Argo CD sync. Check the jobs and their source resources:
 
 ```bash
-oc get application aws-generated-secrets-publisher-<cluster> -n openshift-gitops
-oc get deployment,pod -n openshift-gitops -l app.kubernetes.io/name=aws-generated-secrets-publisher
-oc logs deployment/aws-generated-secrets-publisher -n openshift-gitops --tail=200
-oc describe secret aws-static-credentials-publisher -n openshift-gitops
-```
-
-Confirm the generated source resources exist without printing their values:
-
-```bash
+oc get job -A | grep update-sm                       # postsync-ibm-dro-update-sm / postsync-ibm-sls-update-sm
+oc logs job/<postsync-...-update-sm-job> -n <ns> --tail=200
+# source resources the jobs read (confirm they exist, don't print values):
 oc get route ibm-data-reporter -n ibm-software-central
 oc get secret ibm-data-reporter-operator-api-token -n ibm-software-central
 oc get configmap sls-suite-registration -n mas-<instance>-sls
 ```
 
-The publisher retries every five minutes. After fixing its credentials, IAM, KMS, egress,
-or source-resource issue, restart it to retry immediately:
+The jobs run on **sync**, not on a timer. After fixing credentials / IAM / the source resource,
+re-sync the DRO or SLS app to re-run the job:
 
 ```bash
-oc rollout restart deployment/aws-generated-secrets-publisher -n openshift-gitops
-oc rollout status deployment/aws-generated-secrets-publisher \
-  -n openshift-gitops --timeout=10m
+oc annotate application dro.<cluster> -n openshift-gitops argocd.argoproj.io/refresh=hard --overwrite
 ```
 
-Verify the expected AWS fields from an approved federated administrator session:
+If a job fails with a **TLS / x509 "unknown authority"** error reaching the DRO/SLS route, the
+cluster doesn't trust the internal ingress CA — populate `ca-bundle.crt` in the Proxy's trust
+ConfigMap (`openshift-config/custom-ca`) with your internal root CA.
+
+Verify the expected AWS fields (IBM's native layout — **bare path, IBM field names**):
 
 ```bash
 aws secretsmanager get-secret-value --region "$AWS_REGION" \
-  --secret-id "mas/<account>/<cluster>/dro" \
-  --query SecretString --output text |
-jq -e 'has("url") and has("api_token") and has("ca.crt")'
+  --secret-id "<account>/<cluster>/dro" --query SecretString --output text |
+jq -e 'has("dro_url") and has("dro_api_token") and has("dro_ca_b64enc")'
 
 aws secretsmanager get-secret-value --region "$AWS_REGION" \
-  --secret-id "mas/<account>/<cluster>/<instance>/sls" \
-  --query SecretString --output text |
-jq -e 'has("url") and has("registration_key") and has("ca.crt")'
+  --secret-id "<account>/<cluster>/<instance>/sls" --query SecretString --output text |
+jq -e 'has("registration_key") and has("ca_b64")'
 ```
 
 ## MongoDB is not Running

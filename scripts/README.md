@@ -10,7 +10,7 @@
 
 The numbered files in `../bootstrap` are the install wrappers. `seed-aws-secrets.sh`
 prepares the secrets those wrappers rely on. Teardown can be done via `teardown-cluster.sh`
-(local dev) or the reviewed GitOps procedure in `../UNINSTALL-GITOPS.md` (recommended).
+(local dev) or the reviewed GitOps procedure in `../UNINSTALL.md` (recommended).
 
 PowerScale S3 attachment configuration remains an application-level Manage procedure;
 see `mas-gitops-config/docs/manage-attachments-powerscale-s3.md`.
