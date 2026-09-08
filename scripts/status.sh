@@ -34,8 +34,7 @@ if verify_aws_secrets generated >/dev/null 2>&1; then
 else
   echo "  SLS/DRO registration: incomplete (expected during initial deployment)"
 fi
-publisher_ready="$(oc get deployment aws-generated-secrets-publisher -n "$ARGO_NS" -o jsonpath='{.status.readyReplicas}' 2>/dev/null || true)"
-printf "  generated-secret publisher: %s\n" "$([[ "$publisher_ready" == "1" ]] && echo ready || echo unavailable)"
+printf "  SLS/DRO publisher (IBM-native postsync-update-sm jobs): %s found\n" "$(oc get job -A 2>/dev/null | grep -c update-sm)"
 hr
 
 echo "MONGODB (namespace $MONGO_NS)"

@@ -12,7 +12,7 @@ upstream except that the JDBC config chart's `sslEnabled` is made configurable
 - `mas-gitops-config`: environment-specific IBM chart values and secret references.
 - IBM's repository: consumed from the internal GitLab fork at the pinned revision (see above) —
   NOT the public GitHub release; the fork carries the one `jdbc_ssl_enabled` patch.
-- AWS Secrets Manager: stores deployment secrets under `mas/<account>/<cluster>/...`.
+- AWS Secrets Manager: stores deployment secrets under `<account>/<cluster>/...`.
 - AWS authentication: the Argo CD repo-server and publisher authenticate with a **static
   AWS access key** read from a Kubernetes Secret (`aws-static-credentials`) via plain
   `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` environment variables. This is

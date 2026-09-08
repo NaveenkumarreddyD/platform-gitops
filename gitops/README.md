@@ -24,4 +24,4 @@ and does not require an operator command.
 
 All IBM applications use the `aws-secrets-manager-helm` Argo CD plugin configuration.
 Secret placeholders are resolved from AWS Secrets Manager under
-`mas/<account>/<cluster>/...`.
+`<account>/<cluster>/...`.

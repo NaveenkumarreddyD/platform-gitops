@@ -22,7 +22,7 @@ storageClass: isilon
 accountRoot: { autoSync: true, clusterAdminRole: true, applicationAdminRole: true }
 # SLS/DRO generated secrets are published by IBM's native postsync-update-sm jobs
 # (run_sync_hooks: true in mas-gitops-config). The former custom publisher Deployment
-# (aws-generated-secrets-publisher) was removed on this branch — see
+# (aws-generated-secrets-publisher) was removed — see
 # MIGRATION-NOTES-ibm-native-publisher.md. The two fields below stay because the MongoDB
 # CA publish job (25-mongodb-instance.yaml) reuses them (aws-cli image + write-scoped key).
 generatedSecretsPublisher:
