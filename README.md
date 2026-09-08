@@ -18,9 +18,9 @@ upstream except that the JDBC config chart's `sslEnabled` is made configurable
   `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`/`AWS_REGION` environment variables. This is
   the simple bootstrap approach; it keeps a long-lived key in the cluster, so the keys must
   be least-privileged and rotated. See [INSTALL.md](INSTALL.md) for the security note.
-- Generated-secret publisher: automatically copies SLS and DRO registration into AWS
-  Secrets Manager with a separate, write-scoped static key (`aws-static-credentials-publisher`)
-  and IAM user.
+- SLS/DRO publisher: IBM's native `postsync-update-sm` jobs write the generated SLS and DRO
+  registration into AWS Secrets Manager, using a separate, write-scoped static key
+  (`aws-static-credentials-publisher`).
 
 The `argocd-vault-plugin` executable remains because that is the upstream plugin name used
 by IBM's charts. Its configured backend is `awssecretsmanager` (`AVP_TYPE=awssecretsmanager`);
