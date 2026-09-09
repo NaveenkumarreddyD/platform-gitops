@@ -1,2 +1,0 @@
-{{- define "gitops.mongoNs"   -}}{{ required "mongo.namespace must be set in gitops/envs/<cluster>/values.yaml" .Values.mongo.namespace }}{{- end -}}
-{{- define "gitops.path"      -}}{{ required "account.id must be set" .Values.account.id }}/{{ required "clusterId must be set in gitops/envs/<cluster>/common.yaml" .Values.clusterId }}/{{ required "instanceId must be set in gitops/envs/<cluster>/values.yaml" .Values.instanceId }}{{- end -}}

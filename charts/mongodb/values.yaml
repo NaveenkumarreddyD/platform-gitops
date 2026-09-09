@@ -6,7 +6,7 @@ members: 3                       # ibm default mongodb_replicas=3 (3 data + 3 lo
 mongodbVersion: "7.0.23"         # spec.version (semver for the operator); 6->7 is MAJOR — fresh install only.
 # Full mongod image, pinned on the container. Required: the community operator only appends the
 # -<imageType> suffix for official repos (docker.io/mongodb, quay.io/mongodb); for quay.io/ibmmas it
-# would emit a bare :<version> tag that doesn't exist. Composed from gitops/values.yaml mongoImage.
+# would emit a bare :<version> tag that doesn't exist. Composed from argocd-apps/values.yaml mongoImage.
 mongodbImage: "quay.io/ibmmas/mongo:7.0.23-ubi8-20250817T080412Z"
 storageClass: isilon
 dataSize: 20Gi                   # ibm default mongodb_storage_capacity_data

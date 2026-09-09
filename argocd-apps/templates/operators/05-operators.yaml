@@ -1,5 +1,5 @@
 # OLM operators (independent component: ./bootstrap/05-operators.sh <env>).
-# Renders the reusable workloads/operators chart with the enabled platform operator list:
+# Renders the reusable charts/operators chart with the enabled platform operator list:
 # cert-manager when platform-owned, plus grafana-operator when enable.grafana is true.
 # Deployed EARLY (wave 5) — before MongoDB (which needs cert-manager's Issuer/Certificate CRDs).
 {{- if has .Values.component (list "operators" "all") }}
@@ -25,7 +25,7 @@ spec:
   source:
     repoURL: {{ .Values.platform.repo_url | quote }}
     targetRevision: {{ .Values.platform.revision | quote }}
-    path: workloads/operators
+    path: charts/operators
     helm:
       values: |
         operators:

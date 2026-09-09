@@ -12,7 +12,7 @@ source:    { repo_url: "https://gitlab.lac1.biz/gitops/ibm-mas-gitops.git", revi
 generator: { repo_url: "https://gitlab.lac1.biz/gitops/mas-gitops-config.git", revision: main }
 
 # No default account — each env MUST set its own UNIQUE account.id in
-# gitops/envs/<cluster>/common.yaml (convention: account.id == clusterId). The Account
+# argocd-apps/envs/<cluster>/common.yaml (convention: account.id == clusterId). The Account
 # Root App globs "<account.id>/*/..." in the config repo, so two envs sharing an account
 # would cross-generate each other's apps. validate.yaml fails the render if it's unset.
 account: { id: "" }
@@ -32,7 +32,7 @@ grafana: { namespace: grafana }
 mongoOperator: { repo: "https://mongodb.github.io/helm-charts", chart: mongodb-kubernetes, version: "1.4.0" }
 mongoImage: { repo: "quay.io/ibmmas", name: "mongo", imageType: "ubi8-20250817T080412Z" }
 
-# OLM operators installed by the 'operators' component (reusable workloads/operators chart).
+# OLM operators installed by the 'operators' component (reusable charts/operators chart).
 # cert-manager is REQUIRED — MongoDB's Issuer/Certificate AND MAS both need it — and mirrors
 # IBM's 010-redhat-cert-manager exactly (same operator/channel/namespace) so MAS gets the
 # cert-manager it expects in the 'cert-manager' namespace. grafana-operator is added to the
@@ -61,7 +61,7 @@ auto_delete: false
 
 enable:
   # cert-manager: install the Red Hat cert-manager operator via the 'operators' component.
-  # Set false per-env (gitops/envs/<cluster>/values.yaml) when a platform team already owns
+  # Set false per-env (argocd-apps/envs/<cluster>/values.yaml) when a platform team already owns
   # cert-manager on the cluster — MAS/Mongo then use the existing one. If false AND absent,
   # 20-mongodb/30-mas fail early with a clear "cert-manager CRD not found" message.
   certManager: true

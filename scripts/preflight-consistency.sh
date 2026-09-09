@@ -3,8 +3,8 @@
 set -euo pipefail
 CLUSTER="${1:?usage: preflight-consistency.sh <cluster>}"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-COMMON="$ROOT/gitops/envs/$CLUSTER/common.yaml"
-VALUES="$ROOT/gitops/envs/$CLUSTER/values.yaml"
+COMMON="$ROOT/argocd-apps/envs/$CLUSTER/common.yaml"
+VALUES="$ROOT/argocd-apps/envs/$CLUSTER/values.yaml"
 
 ENVFILE=""
 for d in "$ROOT/.." "$ROOT/../.."; do
@@ -41,7 +41,7 @@ expected="${ACCOUNT_ID}/${CLUSTER_ID}"
 # ripgrep installed cannot produce a false PASS on the legacy check or a false FAIL
 # on the AWS check.
 if grep -rqEI --exclude-dir=.git 'secret/data/|VAULT_ADDR|vault_writer' \
-  "$ROOT/bootstrap" "$ROOT/gitops" "$ROOT/workloads" \
+  "$ROOT/bootstrap" "$ROOT/argocd-apps" "$ROOT/charts" \
   "$config_root/base" "$config_root/envs" "$config_root/$ACCOUNT_ID/$CLUSTER_ID" \
   2>/dev/null; then
   echo "FAIL legacy backend references remain"

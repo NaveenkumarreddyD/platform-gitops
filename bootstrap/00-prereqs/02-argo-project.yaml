@@ -5,7 +5,7 @@ metadata:
   namespace: openshift-gitops
 spec:
   description: MAS GitOps applications
-  # SOURCES — only these repos may be deployed from (match the repo_urls in gitops/values.yaml).
+  # SOURCES — only these repos may be deployed from (match the repo_urls in argocd-apps/values.yaml).
   sourceRepos:
     - https://gitlab.lac1.biz/gitops/platform-gitops.git
     - https://gitlab.lac1.biz/gitops/mas-gitops-config.git

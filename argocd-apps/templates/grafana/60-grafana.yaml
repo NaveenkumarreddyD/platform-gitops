@@ -23,7 +23,7 @@ spec:
   source:
     repoURL: {{ .Values.platform.repo_url | quote }}
     targetRevision: {{ .Values.platform.revision | quote }}
-    path: workloads/grafana
+    path: charts/grafana
   syncPolicy:
     syncOptions: [ "CreateNamespace=true" ]
   # Intentionally manual: approve the pinned operator InstallPlan and wait for

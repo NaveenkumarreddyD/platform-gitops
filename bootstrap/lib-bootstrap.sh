@@ -13,9 +13,9 @@ say(){ echo ">> $*"; }
 
 resolve_env(){
   ENV="${1:?usage: $(basename "$0") <env>   (e.g. doc4)}"
-  COMMON="$ROOT/gitops/envs/$ENV/common.yaml"
-  VALUES="$ROOT/gitops/envs/$ENV/values.yaml"
-  [[ -f "$COMMON" && -f "$VALUES" ]] || die "env files gitops/envs/$ENV/{common,values}.yaml not found"
+  COMMON="$ROOT/argocd-apps/envs/$ENV/common.yaml"
+  VALUES="$ROOT/argocd-apps/envs/$ENV/values.yaml"
+  [[ -f "$COMMON" && -f "$VALUES" ]] || die "env files argocd-apps/envs/$ENV/{common,values}.yaml not found"
 }
 
 require_cluster(){
@@ -41,14 +41,14 @@ env_feature_enabled(){
   local key="$1" value
   value="$(awk -v key="$key" '/^enable:[[:space:]]*$/ { inside=1; next } inside && /^[^[:space:]]/ { exit } inside && $1 == key ":" { print tolower($2); exit }' "$VALUES")"
   if [[ -z "$value" ]]; then
-    value="$(awk -v key="$key" '/^enable:[[:space:]]*$/ { inside=1; next } inside && /^[^[:space:]]/ { exit } inside && $1 == key ":" { print tolower($2); exit }' "$ROOT/gitops/values.yaml")"
+    value="$(awk -v key="$key" '/^enable:[[:space:]]*$/ { inside=1; next } inside && /^[^[:space:]]/ { exit } inside && $1 == key ":" { print tolower($2); exit }' "$ROOT/argocd-apps/values.yaml")"
   fi
   [[ "$value" == "true" ]]
 }
 
 render_component(){
   local component="$1"; shift
-  helm template platform "$ROOT/gitops" -f "$COMMON" -f "$VALUES" --set component="$component" "$@"
+  helm template platform "$ROOT/argocd-apps" -f "$COMMON" -f "$VALUES" --set component="$component" "$@"
 }
 
 apply_component(){

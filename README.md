@@ -39,8 +39,12 @@ deployment. Use [INSTALL.md](INSTALL.md) for the end-to-end procedure,
 ## Repository layout
 
 ```text
-bootstrap/   Argo CD integration and four ordered bootstrap wrappers
-gitops/      Component chart and environment values
-workloads/   MongoDB, generated-secret publisher, OLM operator, and optional Grafana charts
-scripts/     Read-only status/preflight plus Manage key backup
+bootstrap/     Argo CD integration and four ordered install wrappers (00→05→20→30)
+argocd-apps/   The Argo CD "Application" definitions (app-of-apps) + per-cluster settings
+charts/        The Helm charts those Applications deploy (MongoDB, OLM operators, Grafana)
+scripts/       Read-only status/preflight, secret seeding, and teardown (day-2 tools)
 ```
+
+`argocd-apps/` holds the *pointers* (Argo CD Applications) and `charts/` holds the
+*payloads* (the charts they install) — the standard Argo CD "app-of-apps" split. See
+[STRUCTURE.md](STRUCTURE.md) for the full map.

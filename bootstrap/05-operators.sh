@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # 05 — install OLM operators (cert-manager, + grafana-operator if enabled) via the reusable
-# workloads/operators chart. Runs EARLY: cert-manager's CRDs must exist before MongoDB
+# charts/operators chart. Runs EARLY: cert-manager's CRDs must exist before MongoDB
 # (component 20 uses Issuer/Certificate) and before MAS. Independent component.
 source "$(cd "$(dirname "$0")" && pwd)/lib-bootstrap.sh"
 resolve_env "${1:-}"; require_cluster
