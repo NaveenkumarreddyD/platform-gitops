@@ -23,7 +23,8 @@ cat SubCA.cer RootCA.cer | tr -d '\r' > ca-chain.crt
 
 export REGION=us-east-1 CLUSTER=<cluster> INSTANCE=<instance>
 export ENTITLEMENT_KEY='<ibm-key>' LICENSE_FILE=./entitlement.lic
-export MONGO_ADMIN_PASSWORD='<pw>' SLS_MONGO_PASSWORD='<pw>'
+# Optional: MONGO_ADMIN_PASSWORD / SLS_MONGO_PASSWORD. If unset, the script reuses the value
+# already in AWS Secrets Manager, or generates a strong 32-char password on first seed.
 export JDBC_USERNAME=maximo JDBC_PASSWORD='<pw>' JDBC_URL='jdbc:oracle:thin:@//db:1521/SVC'
 export TLS_CRT=$PWD/tls.crt TLS_KEY=$PWD/tls.key CA_CHAIN=$PWD/ca-chain.crt
 export PUBLISHER_AWS_ACCESS_KEY_ID=AKIA<pub> PUBLISHER_AWS_SECRET_ACCESS_KEY='<secret>'

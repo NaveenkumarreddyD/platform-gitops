@@ -3,6 +3,11 @@
 # Values are passed via exported environment variables. Idempotent (create-or-update).
 # The Mongo CA (mongo#ca.crt), SLS and DRO secrets are NOT seeded here — they are created
 # automatically by cert-manager + the in-cluster publishers.
+#
+# MONGO_ADMIN_PASSWORD and SLS_MONGO_PASSWORD are OPTIONAL: if unset, each is resolved as
+# explicit env var > existing value already in AWS Secrets Manager > a freshly generated
+# strong 32-char password. Reuse-if-present keeps the script idempotent — it never clobbers
+# the password a live MongoDB user was created with.
 set -euo pipefail
 
 # ── REQUIRED exports ─────────────────────────────────────────────
@@ -11,8 +16,7 @@ set -euo pipefail
 : "${INSTANCE:?export INSTANCE=drgitopsapp}"
 : "${ENTITLEMENT_KEY:?export ENTITLEMENT_KEY=<ibm-entitlement-key>}"
 : "${LICENSE_FILE:?export LICENSE_FILE=/path/to/entitlement.lic}"
-: "${MONGO_ADMIN_PASSWORD:?export MONGO_ADMIN_PASSWORD=...}"
-: "${SLS_MONGO_PASSWORD:?export SLS_MONGO_PASSWORD=...}"
+# MONGO_ADMIN_PASSWORD / SLS_MONGO_PASSWORD — OPTIONAL (auto-generated if unset; see below)
 : "${JDBC_USERNAME:?export JDBC_USERNAME=maximo}"
 : "${JDBC_PASSWORD:?export JDBC_PASSWORD=...}"
 : "${JDBC_URL:?export JDBC_URL=jdbc:oracle:thin:@//host:1521/SVC}"
@@ -47,6 +51,34 @@ put() {  # put <secret-name> <json-string>
   fi
   rm -f "$f"
 }
+
+gen_pw() {  # strong 32-char alphanumeric password (safe in Mongo URIs, YAML and JSON)
+  local raw
+  raw="$(openssl rand -base64 48 | LC_ALL=C tr -dc 'A-Za-z0-9')"
+  printf '%s' "${raw:0:32}"
+}
+
+sm_field() {  # sm_field <secret-name> <field> -> prints the stored value, or empty if absent
+  aws secretsmanager get-secret-value --region "$REGION" --secret-id "$1" \
+    --query SecretString --output text 2>/dev/null \
+    | jq -r --arg k "$2" '.[$k] // empty' 2>/dev/null || true
+}
+
+resolve_pw() {  # resolve_pw <VAR_NAME> <secret-name> <field> : env > existing SM value > generate
+  local var="$1" name="$2" field="$3" cur existing
+  eval "cur=\${$var:-}"
+  if [ -n "$cur" ]; then return 0; fi                       # explicit env override wins
+  existing="$(sm_field "$name" "$field")"
+  if [ -n "$existing" ]; then
+    eval "$var=\$existing"; echo "reusing    $name#$field (already in AWS Secrets Manager)"
+  else
+    eval "$var=\$(gen_pw)"; echo "generated  $name#$field (strong 32-char password)"
+  fi
+}
+
+# Mongo admin + SLS-mongo passwords: explicit env > existing SM value > freshly generated.
+resolve_pw MONGO_ADMIN_PASSWORD "$IP/mongo"     password
+resolve_pw SLS_MONGO_PASSWORD   "$IP/sls-mongo" password
 
 # entitlement (dockerconfigjson, base64) — built without needing oc/a cluster
 AUTH="$(printf 'cp:%s' "$ENTITLEMENT_KEY" | base64 -w0)"
